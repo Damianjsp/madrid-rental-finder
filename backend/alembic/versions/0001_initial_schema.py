@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text()),
         sa.Column(
             "created_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
@@ -49,11 +49,11 @@ def upgrade() -> None:
         sa.Column("portal_id", sa.SmallInteger(), nullable=False),
         sa.Column(
             "started_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.Column("finished_at", postgresql.TIMESTAMPTZ()),
+        sa.Column("finished_at", sa.DateTime(timezone=True)),
         sa.Column("status", sa.Text(), nullable=False, server_default="running"),
         sa.Column("listings_seen", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("listings_new", sa.Integer(), nullable=False, server_default="0"),
@@ -79,7 +79,7 @@ def upgrade() -> None:
         sa.Column("zone", sa.Text()),
         sa.Column(
             "created_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
@@ -105,7 +105,7 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text()),
         sa.Column(
             "created_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
@@ -126,7 +126,7 @@ def upgrade() -> None:
         sa.Column("lon", sa.Double()),
         sa.Column(
             "created_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
@@ -207,19 +207,19 @@ def upgrade() -> None:
         sa.Column("lon", sa.Double()),
         sa.Column(
             "first_seen_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
         sa.Column(
             "last_seen_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
         sa.Column(
             "scraped_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),
@@ -276,7 +276,7 @@ def upgrade() -> None:
         sa.Column("version", sa.Text(), nullable=False),
         sa.Column(
             "deployed_at",
-            postgresql.TIMESTAMPTZ(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),

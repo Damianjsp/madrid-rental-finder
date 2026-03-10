@@ -2,7 +2,7 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 # Alembic Config object
 config = context.config
@@ -46,6 +46,10 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Ensure schema exists before alembic tries to create version table
+        connection.execute(text("CREATE SCHEMA IF NOT EXISTS mrf"))
+        connection.commit()
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
