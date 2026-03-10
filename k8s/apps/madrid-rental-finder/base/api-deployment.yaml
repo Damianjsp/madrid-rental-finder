@@ -64,4 +64,6 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3
+      nodeSelector:
+        kubernetes.io/arch: arm64
       restartPolicy: Always

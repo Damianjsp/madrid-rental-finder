@@ -23,6 +23,8 @@ spec:
             app: mrf-scraper
             portal: pisos
         spec:
+          nodeSelector:
+            kubernetes.io/arch: arm64
           restartPolicy: Never
           containers:
             - name: scraper
