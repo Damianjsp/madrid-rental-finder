@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
 const LS_KEY = 'mrf_last_visit'
 
 export function useLastVisit() {
-  const [lastVisit, setLastVisit] = useState<Date | null>(null)
-  const updated = useRef(false)
+  const lastVisit = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const stored = window.localStorage.getItem(LS_KEY)
+    return stored ? new Date(stored) : null
+  }, [])
 
   useEffect(() => {
-    if (updated.current) return
-    updated.current = true
-    const stored = localStorage.getItem(LS_KEY)
-    if (stored) setLastVisit(new Date(stored))
-    // Update timestamp on each visit
-    localStorage.setItem(LS_KEY, new Date().toISOString())
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LS_KEY, new Date().toISOString())
   }, [])
 
   const isNew = (dateStr: string): boolean => {

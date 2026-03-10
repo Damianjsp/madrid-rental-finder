@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   createColumnHelper,
@@ -23,11 +23,7 @@ function fmt(val?: number, prefix = '€') {
 
 function CommuteCell({ min, max }: { min?: number; max?: number }) {
   if (min == null && max == null) return <span className="text-slate-600">—</span>
-  return (
-    <span className="text-slate-300">
-      {min}–{max} min
-    </span>
-  )
+  return <span className="text-slate-300">{min}–{max} min</span>
 }
 
 function ZoneBadge({ zone }: { zone?: string }) {
@@ -40,11 +36,7 @@ function ZoneBadge({ zone }: { zone?: string }) {
     C2: 'bg-orange-900/50 text-orange-400 border-orange-800',
   }
   const cls = colors[zone] ?? 'bg-slate-700 text-slate-300 border-slate-600'
-  return (
-    <span className={`inline-block text-xs px-1.5 py-0.5 rounded border ${cls}`}>
-      {zone}
-    </span>
-  )
+  return <span className={`inline-block text-xs px-1.5 py-0.5 rounded border ${cls}`}>{zone}</span>
 }
 
 export function NeighborhoodsView() {
@@ -56,13 +48,13 @@ export function NeighborhoodsView() {
     queryFn: fetchNeighborhoods,
   })
 
-  const data = raw.filter(n =>
+  const data = useMemo(() => raw.filter(n =>
     !search || n.name.toLowerCase().includes(search.toLowerCase()) ||
     n.district_name?.toLowerCase().includes(search.toLowerCase()) ||
     n.municipality.toLowerCase().includes(search.toLowerCase())
-  )
+  ), [raw, search])
 
-  const columns = [
+  const columns = useMemo(() => [
     col.accessor('name', {
       header: 'Neighborhood',
       cell: info => <span className="text-slate-200 font-medium">{info.getValue()}</span>,
@@ -90,16 +82,12 @@ export function NeighborhoodsView() {
     col.display({
       id: 'commute_sol',
       header: 'Commute Sol',
-      cell: ({ row }) => (
-        <CommuteCell min={row.original.commute_to_sol_min} max={row.original.commute_to_sol_max} />
-      ),
+      cell: ({ row }) => <CommuteCell min={row.original.commute_to_sol_min} max={row.original.commute_to_sol_max} />,
     }),
     col.display({
       id: 'commute_atocha',
       header: 'Commute Atocha',
-      cell: ({ row }) => (
-        <CommuteCell min={row.original.commute_to_atocha_min} max={row.original.commute_to_atocha_max} />
-      ),
+      cell: ({ row }) => <CommuteCell min={row.original.commute_to_atocha_min} max={row.original.commute_to_atocha_max} />,
     }),
     col.accessor('avg_rent_1bed', {
       header: '1 bed avg',
@@ -113,8 +101,9 @@ export function NeighborhoodsView() {
       header: '3 bed avg',
       cell: info => <span className="text-slate-400 text-sm">{fmt(info.getValue())}</span>,
     }),
-  ]
+  ], [])
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table intentionally returns non-memoizable helpers; this component uses them locally only.
   const table = useReactTable({
     data,
     columns,
@@ -174,10 +163,7 @@ export function NeighborhoodsView() {
                 </tr>
               ) : (
                 table.getRowModel().rows.map(row => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-elevated)] transition-colors"
-                  >
+                  <tr key={row.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-elevated)] transition-colors">
                     {row.getVisibleCells().map(cell => (
                       <td key={cell.id} className="px-3 py-3 whitespace-nowrap">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -191,7 +177,6 @@ export function NeighborhoodsView() {
         </div>
       )}
 
-      {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-slate-500">
         <span className="font-medium text-slate-400">Zone:</span>
         {['A', 'B1', 'B2', 'C1', 'C2'].map(z => (

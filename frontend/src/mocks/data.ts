@@ -14,7 +14,7 @@ export const MOCK_NEIGHBORHOODS: Neighborhood[] = [
   { id: 3, name: 'Chueca', district_id: 1, district_name: 'Centro', municipality: 'Madrid', zone: 'A', safety_score: 4, transport_score: 5, commute_to_sol_min: 5, commute_to_sol_max: 10, commute_to_atocha_min: 12, commute_to_atocha_max: 18, avg_rent_1bed: 1200, avg_rent_2bed: 1700, avg_rent_3bed: 2400 },
   { id: 4, name: 'Goya', district_id: 2, district_name: 'Salamanca', municipality: 'Madrid', zone: 'A', safety_score: 5, transport_score: 5, commute_to_sol_min: 12, commute_to_sol_max: 18, commute_to_atocha_min: 15, commute_to_atocha_max: 22, avg_rent_1bed: 1400, avg_rent_2bed: 2000, avg_rent_3bed: 2900 },
   { id: 5, name: 'Lista', district_id: 2, district_name: 'Salamanca', municipality: 'Madrid', zone: 'A', safety_score: 5, transport_score: 4, commute_to_sol_min: 15, commute_to_sol_max: 22, commute_to_atocha_min: 18, commute_to_atocha_max: 25, avg_rent_1bed: 1500, avg_rent_2bed: 2100, avg_rent_3bed: 3000 },
-  { id: 6, name: 'Prosperidad', district_id: 3, district_name: 'Hortaleza', municipality: 'Madrid', zone: 'B1', safety_score: 4, transport_score: 3, commute_to_sol_min: 25, commute_to_sol_max: 35, commute_to_atocha_min: 30, commute_to_atocha_max: 40, avg_rent_1bed: 900, avg_rent_2bed: 1200, avg_rent_3bed: 1700 },
+  { id: 6, name: 'Prosperidad', district_id: 3, district_name: 'Chamartín', municipality: 'Madrid', zone: 'B1', safety_score: 4, transport_score: 3, commute_to_sol_min: 25, commute_to_sol_max: 35, commute_to_atocha_min: 30, commute_to_atocha_max: 40, avg_rent_1bed: 900, avg_rent_2bed: 1200, avg_rent_3bed: 1700 },
   { id: 7, name: 'Acacias', district_id: 4, district_name: 'Arganzuela', municipality: 'Madrid', zone: 'A', safety_score: 3, transport_score: 4, commute_to_sol_min: 12, commute_to_sol_max: 18, commute_to_atocha_min: 8, commute_to_atocha_max: 12, avg_rent_1bed: 1000, avg_rent_2bed: 1400, avg_rent_3bed: 1900 },
   { id: 8, name: 'Usera', district_id: 5, district_name: 'Usera', municipality: 'Madrid', zone: 'B1', safety_score: 2, transport_score: 3, commute_to_sol_min: 20, commute_to_sol_max: 30, commute_to_atocha_min: 15, commute_to_atocha_max: 22, avg_rent_1bed: 750, avg_rent_2bed: 1050, avg_rent_3bed: 1400 },
   { id: 9, name: 'Carabanchel', district_id: 6, district_name: 'Carabanchel', municipality: 'Madrid', zone: 'B2', safety_score: 2, transport_score: 3, commute_to_sol_min: 25, commute_to_sol_max: 35, commute_to_atocha_min: 20, commute_to_atocha_max: 30, avg_rent_1bed: 700, avg_rent_2bed: 950, avg_rent_3bed: 1300 },
@@ -172,12 +172,12 @@ export const MOCK_LISTINGS: Listing[] = [
   {
     id: 10, portal_id: 2, portal_key: 'pisos', portal_name: 'Pisos.com',
     source_listing_id: 'PIS-010', url: 'https://www.pisos.com/listings/010',
-    title: 'Piso luminoso en Prosperidad (Hortaleza)', description: '2 habitaciones con muchísima luz en Prosperidad. Comunidad tranquila, piscina comunitaria. Metro L4.',
+    title: 'Piso luminoso en Prosperidad (Chamartín)', description: '2 habitaciones con muchísima luz en Prosperidad. Comunidad tranquila, piscina comunitaria. Metro L4.',
     price_eur: 1050, deposit_eur: 2100, expenses_included: false,
     bedrooms: 2, bathrooms: 1, size_m2: 70, property_type: 'piso',
     furnished: true, elevator: true, parking: false,
-    address_raw: 'Calle Arturo Soria 150, Prosperidad', neighborhood_raw: 'Prosperidad', district_raw: 'Hortaleza',
-    neighborhood_id: 6, neighborhood_name: 'Prosperidad', district_id: 3, district_name: 'Hortaleza',
+    address_raw: 'Calle Arturo Soria 150, Prosperidad', neighborhood_raw: 'Prosperidad', district_raw: 'Chamartín',
+    neighborhood_id: 6, neighborhood_name: 'Prosperidad', district_id: 3, district_name: 'Chamartín',
     first_seen_at: daysAgo(4), last_seen_at: daysAgo(1), is_active: true,
     neighborhood_safety_score: 4, neighborhood_transport_score: 3,
     district_avg_rent_1bed: 900, district_avg_rent_2bed: 1200, district_avg_rent_3bed: 1700,
@@ -203,7 +203,7 @@ export const MOCK_STATS: Stats = {
     { district_name: 'Centro', listings_count: 4, avg_price: 987, min_price: 650, max_price: 1350 },
     { district_name: 'Salamanca', listings_count: 2, avg_price: 1650, min_price: 1100, max_price: 2200 },
     { district_name: 'Arganzuela', listings_count: 1, avg_price: 1100, min_price: 1100, max_price: 1100 },
-    { district_name: 'Hortaleza', listings_count: 1, avg_price: 1050, min_price: 1050, max_price: 1050 },
+    { district_name: 'Chamartín', listings_count: 1, avg_price: 1050, min_price: 1050, max_price: 1050 },
     { district_name: 'Usera', listings_count: 1, avg_price: 980, min_price: 980, max_price: 980 },
   ],
 }
@@ -220,8 +220,8 @@ export function getMockListings(params: {
   if (params.price_min) results = results.filter(l => (l.price_eur ?? 0) >= params.price_min!)
   if (params.price_max) results = results.filter(l => (l.price_eur ?? 0) <= params.price_max!)
   if (params.bedrooms) results = results.filter(l => (l.bedrooms ?? 0) >= params.bedrooms!)
-  if (params.size_min) results = results.filter(l => (Number(l.size_m2) ?? 0) >= params.size_min!)
-  if (params.size_max) results = results.filter(l => (Number(l.size_m2) ?? 0) <= params.size_max!)
+  if (params.size_min) results = results.filter(l => (Number(l.size_m2) || 0) >= params.size_min!)
+  if (params.size_max) results = results.filter(l => (Number(l.size_m2) || 0) <= params.size_max!)
   if (params.district) results = results.filter(l => l.district_name?.toLowerCase() === params.district?.toLowerCase())
   if (params.neighborhood) results = results.filter(l => l.neighborhood_name?.toLowerCase() === params.neighborhood?.toLowerCase())
   if (params.portal) results = results.filter(l => l.portal_key === params.portal)
