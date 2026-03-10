@@ -1,0 +1,113 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "frontend/**"
+
+env:
+  REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
+  API_IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/madrid-rental-finder/api
+  DASHBOARD_IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/madrid-rental-finder/dashboard
+
+jobs:
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to commit tag bumps back to repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64,linux/amd64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "sha_tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      # ─── Build & push API image ──────────────────────────────────────────
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+            ${{ env.API_IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.API_IMAGE }}:latest
+          cache-to: type=inline
+          provenance: false  # avoids multi-arch manifest issues on some ACR tiers
+
+      # ─── Build & push Dashboard image ────────────────────────────────────
+      - name: Build and push Dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: |
+            ${{ env.DASHBOARD_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+            ${{ env.DASHBOARD_IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.DASHBOARD_IMAGE }}:latest
+          cache-to: type=inline
+          provenance: false
+
+      # ─── Approach B: commit updated image tags to overlay ────────────────
+      # ArgoCD picks up the change and syncs automatically.
+      - name: Update kustomize image tags
+        run: |
+          cd k8s/apps/madrid-rental-finder/overlays/homelab
+
+          # Install kustomize if not available
+          if ! command -v kustomize &>/dev/null; then
+            curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+            sudo mv kustomize /usr/local/bin/
+          fi
+
+          kustomize edit set image \
+            "${{ env.API_IMAGE }}=${{ env.API_IMAGE }}:${{ steps.meta.outputs.sha_tag }}"
+
+          kustomize edit set image \
+            "${{ env.DASHBOARD_IMAGE }}=${{ env.DASHBOARD_IMAGE }}:${{ steps.meta.outputs.sha_tag }}"
+
+      - name: Commit and push updated overlay
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/apps/madrid-rental-finder/overlays/homelab/kustomization.yaml
+
+          # Only commit if something changed
+          if git diff --staged --quiet; then
+            echo "No changes to commit — image tags already up to date."
+          else
+            git commit -m "chore(deploy): bump image tags to ${{ steps.meta.outputs.sha_tag }} [skip ci]"
+            git push origin main
+          fi

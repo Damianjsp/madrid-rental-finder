@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mrf-api
+  namespace: madrid-rental-finder
+  labels:
+    app: mrf-api
+    app.kubernetes.io/part-of: madrid-rental-finder
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mrf-api
+  template:
+    metadata:
+      labels:
+        app: mrf-api
+        app.kubernetes.io/part-of: madrid-rental-finder
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: dahomelab.azurecr.io/madrid-rental-finder/api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mrf-db-credentials
+                  key: DATABASE_URL
+            - name: MRF_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: mrf-config
+                  key: MRF_LOG_LEVEL
+            - name: MRF_SCRAPE_MAX_PAGES
+              valueFrom:
+                configMapKeyRef:
+                  name: mrf-config
+                  key: MRF_SCRAPE_MAX_PAGES
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+      restartPolicy: Always

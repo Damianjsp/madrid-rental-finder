@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mrf-dashboard
+  namespace: madrid-rental-finder
+  labels:
+    app: mrf-dashboard
+    app.kubernetes.io/part-of: madrid-rental-finder
+    app.kubernetes.io/component: dashboard
+  annotations:
+    # MetalLB: assign fixed IP for LAN access
+    metallb.universe.tf/loadBalancerIPs: "192.168.79.42"
+spec:
+  type: LoadBalancer
+  selector:
+    app: mrf-dashboard
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

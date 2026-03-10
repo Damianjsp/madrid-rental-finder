@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: madrid-rental-finder
+
+resources:
+  - ../../base
+
+# Image tags — updated by CI pipeline (approach B: commit tag bumps)
+# CI runs: kustomize edit set image ...
+images:
+  - name: dahomelab.azurecr.io/madrid-rental-finder/api
+    newTag: latest
+  - name: dahomelab.azurecr.io/madrid-rental-finder/dashboard
+    newTag: latest
+
+patches:
+  - path: resources-patch.yaml

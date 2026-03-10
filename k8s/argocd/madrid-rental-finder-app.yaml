@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: madrid-rental-finder
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: madrid-rental-finder
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: data-services
+
+  source:
+    repoURL: https://github.com/Damianjsp/madrid-rental-finder.git
+    targetRevision: main
+    path: k8s/apps/madrid-rental-finder/overlays/homelab
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: madrid-rental-finder
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

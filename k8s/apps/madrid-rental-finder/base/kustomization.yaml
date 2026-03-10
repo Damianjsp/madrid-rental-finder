@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: madrid-rental-finder
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - dashboard-deployment.yaml
+  - dashboard-service.yaml
+  - cronjob-scrape-spotahome.yaml
+  - cronjob-scrape-pisos.yaml
+  - cronjob-scrape-yaencontre.yaml
+  - cronjob-scrape-habitaclia.yaml
+  - cronjob-scrape-enalquiler.yaml
+  - cronjob-reconcile.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: madrid-rental-finder
+  app.kubernetes.io/managed-by: kustomize

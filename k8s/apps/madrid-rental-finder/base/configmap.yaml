@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mrf-config
+  namespace: madrid-rental-finder
+  labels:
+    app.kubernetes.io/part-of: madrid-rental-finder
+data:
+  # Application log level
+  MRF_LOG_LEVEL: "INFO"
+
+  # Portal base URLs
+  MRF_SPOTAHOME_BASE_URL: "https://www.spotahome.com"
+  MRF_PISOS_BASE_URL: "https://www.pisos.com"
+  MRF_YAENCONTRE_BASE_URL: "https://www.yaencontre.com"
+  MRF_HABITACLIA_BASE_URL: "https://www.habitaclia.com"
+  MRF_ENALQUILER_BASE_URL: "https://www.enalquiler.com"
+
+  # Scraping limits
+  MRF_SCRAPE_MAX_PAGES: "10"
+
+  # Database host (non-sensitive)
+  MRF_DB_HOST: "postgresql.postgresql.svc.cluster.local"
+  MRF_DB_PORT: "5432"
+  MRF_DB_NAME: "madrid_rental_finder"
+
+  # Reconciliation settings
+  MRF_INACTIVE_TTL_DAYS: "7"

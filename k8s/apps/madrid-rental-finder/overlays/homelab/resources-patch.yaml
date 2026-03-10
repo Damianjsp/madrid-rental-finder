@@ -1,0 +1,40 @@
+# Pi 5 resource patch — Kustomize strategic merge patch
+# Applied on top of base. Keeps limits conservative for the 2-node ARM64 homelab cluster.
+# These values match the base exactly — override here if you need to dial them up/down
+# per environment (e.g. more memory if Playwright scrapers are added).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mrf-api
+  namespace: madrid-rental-finder
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mrf-dashboard
+  namespace: madrid-rental-finder
+spec:
+  template:
+    spec:
+      containers:
+        - name: dashboard
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 150m
+              memory: 256Mi
