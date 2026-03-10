@@ -27,7 +27,7 @@ Why: scraping is Python’s home turf; FastAPI is minimal and reliable.
 ### Frontend (dashboard)
 - **React + Vite + TypeScript**
 - **TanStack Query + TanStack Table**
-- **Leaflet** (OpenStreetMap) for map view
+- **Leaflet** (OpenStreetMap) for map view (Phase 3, optional)
 
 Why: fastest path to a solid, filter-heavy personal dashboard.
 
@@ -75,11 +75,11 @@ Why: fastest path to a solid, filter-heavy personal dashboard.
 |  | Dashboard (React)   |                                      |
 |  | served by Nginx     |                                      |
 |  +----------+----------+                                      |
-|             | ingress (Traefik)                               |
-+-------------+-------------------------------------------------+
+|             | MetalLB LoadBalancer (192.168.79.42)             |
++--------------------------------------------------------------+
               |
               v
-     https://rentals.<your-domain>   (private)
+     http://192.168.79.42   (LAN only)
 ```
 
 ## Data flow (ingest → normalize → serve)

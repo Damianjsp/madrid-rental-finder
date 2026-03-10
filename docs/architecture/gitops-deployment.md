@@ -1,6 +1,6 @@
 # GitOps + Deployment (K3s + ArgoCD)
 
-Target: Damian’s homelab K3s (ARM64) with Traefik ingress and existing Postgres.
+Target: Damian's homelab K3s (ARM64) with existing Postgres. LAN-only access via MetalLB LoadBalancer (no ingress needed).
 
 ## Repo structure (proposed)
 
@@ -16,8 +16,7 @@ Target: Damian’s homelab K3s (ARM64) with Traefik ingress and existing Postgre
 │  │     │  ├─ api-deployment.yaml
 │  │     │  ├─ api-service.yaml
 │  │     │  ├─ dashboard-deployment.yaml
-│  │     │  ├─ dashboard-service.yaml
-│  │     │  ├─ ingress.yaml
+│  │     │  ├─ dashboard-service.yaml       # LoadBalancer (MetalLB .42)
 │  │     │  ├─ cronjob-scrape-pisos.yaml
 │  │     │  ├─ cronjob-scrape-yaencontre.yaml
 │  │     │  ├─ cronjob-scrape-spotahome.yaml
@@ -26,7 +25,6 @@ Target: Damian’s homelab K3s (ARM64) with Traefik ingress and existing Postgre
 │  │     └─ overlays/
 │  │        └─ homelab/
 │  │           ├─ kustomization.yaml
-│  │           ├─ ingress-patch.yaml
 │  │           ├─ resources-patch.yaml
 │  │           └─ secrets/ (SOPS or ExternalSecret, optional)
 │  └─ argocd/
@@ -56,7 +54,7 @@ Use the existing secret in namespace `postgresql`:
 - `postgresql/postgresql-credentials`
 
 Options:
-1) **Best**: copy required keys into `madrid-rental-finder` namespace as a new secret (manual once), so workloads don’t need cross-namespace secret access.
+1) **Best**: copy required keys into `madrid-rental-finder` namespace as a new secret (manual once), so workloads don't need cross-namespace secret access.
 2) Advanced: ExternalSecrets operator (if installed) to mirror secrets.
 
 Environment variables (API + scrapers):
@@ -68,20 +66,20 @@ Environment variables (API + scrapers):
 
 ConfigMaps hold non-sensitive defaults; Secrets hold credentials.
 
-## Kubernetes objects (what you’ll deploy)
+## Kubernetes objects (what you'll deploy)
 
 ### 1) API Deployment
-- 1 replica (can scale to 2 later)
-- Service: ClusterIP
-- Ingress: Traefik
+- 1 replica
+- Service: ClusterIP (internal, accessed via dashboard Nginx reverse proxy)
 
 Suggested resources (Pi 5 friendly):
 - requests: `cpu: 50m`, `memory: 128Mi`
 - limits: `cpu: 300m`, `memory: 512Mi`
 
 ### 2) Dashboard Deployment
-- Nginx serving static build
+- Nginx serving static build + reverse proxy `/api/*` → backend ClusterIP
 - 1 replica
+- Service: LoadBalancer (MetalLB, IP: 192.168.79.42)
 
 Resources:
 - requests: `cpu: 20m`, `memory: 64Mi`
@@ -91,7 +89,7 @@ Resources:
 One CronJob per portal.
 
 Defaults:
-- `concurrencyPolicy: Forbid` (don’t overlap runs)
+- `concurrencyPolicy: Forbid` (don't overlap runs)
 - `startingDeadlineSeconds: 600`
 - `backoffLimit: 1` (fail fast)
 
@@ -99,12 +97,12 @@ Resources per scraper job:
 - requests: `cpu: 100m`, `memory: 256Mi`
 - limits: `cpu: 500m`, `memory: 768Mi`
 
-If you introduce Playwright later, bump memory to ~1–1.5Gi for those jobs.
+If you introduce Playwright later, bump memory to ~1-1.5Gi for those jobs.
 
 ### 4) Optional PVC
 Not strictly needed if you avoid large raw payload storage.
 If you want debug HTML retention:
-- PVC 1–2Gi `local-path` for `/data/debug` with a cleanup policy.
+- PVC 1-2Gi `local-path` for `/data/debug` with a cleanup policy.
 
 ## ArgoCD Application manifest (example)
 
@@ -152,23 +150,20 @@ Two approaches:
 
 #### A) GitOps-pure (recommended): ArgoCD Image Updater
 - Install/configure ArgoCD Image Updater (if you already have it).
-- Workloads reference image with a “track” tag (e.g. `main`).
+- Workloads reference image with a "track" tag (e.g. `main`).
 - Image Updater updates manifests to new sha tags.
 
 #### B) Simple and explicit: commit tag bumps
 - CI runs `kustomize edit set image ...` and commits updated overlay.
 - ArgoCD syncs because repo changed.
 
-Given it’s a personal tool, B is totally fine.
+Given it's a personal tool, B is totally fine.
 
 ## Networking
-- Ingress route for dashboard (and optional API path under same host).
-
-Example:
-- `rentals.damian.home` → dashboard service
-- `rentals.damian.home/api/*` → backend service
-
-No MetalLB LoadBalancer needed (Traefik handles ingress).
+- **No ingress/Traefik** — LAN-only access.
+- Dashboard exposed via MetalLB LoadBalancer at `192.168.79.42:80`.
+- Nginx in the dashboard container proxies `/api/*` to the backend ClusterIP.
+- Single IP, single port. Access: `http://192.168.79.42`.
 
 ## Observability
 Minimum:
@@ -179,6 +174,5 @@ Optional later:
 - Grafana dashboard reading Prometheus/VictoriaMetrics.
 
 ## Security posture (reasonable for homelab)
-- Basic Auth or IP allowlist at Traefik middleware for the dashboard.
-- No public exposure to internet unless you deliberately publish it.
-- Keep API read-only except admin endpoints guarded.
+- LAN-only (no public exposure). MetalLB IP not routable from internet.
+- API is read-only. No auth needed for a single-user LAN tool.

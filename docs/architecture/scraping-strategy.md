@@ -4,21 +4,20 @@ This project is a personal tool. The right strategy is: **boring, polite, resili
 
 ## Portal priority
 
-### Tier 1 (start here — SSR / easy / API-like)
-1. **Spotahome** — internal JSON endpoints; low ban risk.
-2. **Yaencontre** — SSR, clean listing data in HTML.
-3. **Pisos.com** — SSR, large inventory.
-4. **Habitaclia** — SSR, good listing detail.
-5. **Enalquiler** — SSR, smaller but unique.
+### Tier 1 (start here - SSR / easy / API-like)
+1. **Spotahome** - internal JSON endpoints; low ban risk.
+2. **Yaencontre** - SSR, clean listing data in HTML.
+3. **Pisos.com** - SSR, large inventory.
+4. **Habitaclia** - SSR, good listing detail.
+5. **Enalquiler** - SSR, smaller but unique.
 
 Notes:
-- Research doc flagged **Idealista** and **Fotocasa** as high anti-bot. Those are *Phase 3*.
-- There is overlap across Adevinta properties (Pisos/Habitaclia/Fotocasa). You might not need Fotocasa at all.
+- **Idealista** is dropped - API access is nearly impossible to get, web scraping is high-risk. Not worth the effort.
+- There is overlap across Adevinta properties (Pisos/Habitaclia/Fotocasa). You likely don't need Fotocasa at all.
 
-### Tier 2 (defer — JS heavy / high risk)
-- **Fotocasa** — SPA + stricter controls.
-- **Idealista** — basically “API or pain”. Apply for official API access first.
-- **Milanuncios** — DataDome. Only if you really need private-landlord listings.
+### Tier 2 (defer - only if Tier 1 inventory isn't enough)
+- **Fotocasa** - SPA + stricter controls. Playwright needed.
+- **Milanuncios** - DataDome. Only if you really need private-landlord listings.
 
 ## Core principles
 
@@ -40,20 +39,20 @@ Every run can be re-run.
 Per-portal token bucket + random delay.
 
 Conservative starting limits (you can dial up later):
-- Spotahome: **1 req / 3–8s**
-- Enalquiler: **1 req / 4–10s**
-- Yaencontre: **1 req / 6–15s**
-- Pisos.com: **1 req / 6–15s**
-- Habitaclia: **1 req / 6–15s**
-- Fotocasa (later): **1 req / 20–45s** (Playwright)
-- Idealista web (avoid): **1 req / 30–90s** (Playwright + residential proxy)
+- Spotahome: **1 req / 3-8s**
+- Enalquiler: **1 req / 4-10s**
+- Yaencontre: **1 req / 6-15s**
+- Pisos.com: **1 req / 6-15s**
+- Habitaclia: **1 req / 6-15s**
+- Fotocasa (later): **1 req / 20-45s** (Playwright)
+
 
 ### 4) Session persistence
-- Keep cookies per portal (reduces “new bot” fingerprint).
+- Keep cookies per portal (reduces "new bot" fingerprint).
 - Rotate user-agents from a small realistic pool.
 
-### 5) Don’t scrape personal contact details
-You don’t need phones/emails for this use case. Avoid storing personal data.
+### 5) Don't scrape personal contact details
+You don't need phones/emails for this use case. Avoid storing personal data.
 
 ## Extraction approach by portal
 
@@ -75,7 +74,7 @@ You don’t need phones/emails for this use case. Avoid storing personal data.
 
 ### Enalquiler
 - SSR HTML parsing.
-- Smaller stock; treat as “nice-to-have”.
+- Smaller stock; treat as "nice-to-have".
 
 ## Scheduling on K3s
 Use **Kubernetes CronJobs**, one per portal.
@@ -85,7 +84,7 @@ Use **Kubernetes CronJobs**, one per portal.
 - Pisos.com: every **30 min**
 - Yaencontre: every **30 min**
 - Habitaclia: every **60 min**
-- Enalquiler: every **60–120 min**
+- Enalquiler: every **60-120 min**
 
 Stagger starts to avoid traffic spikes:
 - `*/30 * * * *` (spotahome)
@@ -103,8 +102,8 @@ Add a separate CronJob daily:
 Phase 1: **no proxies**.
 - Run slow, rotate UAs, keep sessions.
 
-Phase 3 (only if needed):
-- Idealista web / Milanuncios → **residential proxies** (Spain) or just use official APIs.
+Phase 3 (only if needed for Fotocasa/Milanuncios):
+- Residential proxies (Spain). Evaluate cost vs. value before committing.
 
 ## Failure modes and how we handle them
 - 403/429: immediately backoff, mark scraper run as `error`, reduce rate.
@@ -113,11 +112,11 @@ Phase 3 (only if needed):
 
 ## Data quality strategy
 - Always store `address_raw`, `neighborhood_raw`, `district_raw`.
-- Run a post-processing “normalizer” step:
+- Run a post-processing "normalizer" step:
   - map common strings → canonical neighborhood/district
   - optionally call a geocoder later (but keep it offline / minimal).
 
 ## Minimum compliance
 - Respect low volume.
-- Avoid scraping endpoints explicitly blocked if there’s an alternative.
-- Don’t redistribute data.
+- Avoid scraping endpoints explicitly blocked if there's an alternative.
+- Don't redistribute data.

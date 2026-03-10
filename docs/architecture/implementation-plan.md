@@ -8,7 +8,7 @@ Constraint reality:
 Deliverables:
 - Repo layout (`backend/`, `frontend/`, `k8s/`), doc set (this folder).
 - ArgoCD Application manifest wired (even if workloads are placeholders).
-- Decide auth approach for dashboard (Traefik basic auth vs LAN only).
+- LAN-only access via MetalLB LoadBalancer (no ingress/Traefik needed).
 
 Success criteria:
 - ArgoCD shows `madrid-rental-finder` app and can sync a namespace + a hello-world service.
@@ -62,16 +62,12 @@ Success criteria:
 
 ### 2.1 Core views
 - Listings table (filters + saved presets)
-- Listing detail drawer (link out to source URL)
+- Listing detail drawer with **direct link to source portal URL** (click → opens Pisos/Yaencontre/etc.)
 - Neighborhood overlay:
   - show safety/transport score
   - show benchmark rent band
 
-### 2.2 Map view (optional but high value)
-- Leaflet map with clustering.
-- Color by safety score or price.
-
-### 2.3 Quality-of-life
+### 2.2 Quality-of-life
 - “New since last visit” indicator.
 - Favorites (stored in localStorage first; DB later).
 
@@ -82,23 +78,23 @@ Success criteria:
 
 Pick only what pays rent (figuratively).
 
-### 3.1 Idealista
-- Apply for official API access.
-- If approved: add Idealista API ingestion.
-- If not: consider skipping (or accept proxy + Playwright pain).
-
-### 3.2 Fotocasa
-- Only if you observe meaningful unique inventory vs Pisos/Habitaclia.
-- Implement Playwright-based scraper with very low frequency.
-
-### 3.3 Dedup + entity resolution
+### 3.1 Dedup + entity resolution
 - Detect same property across portals:
   - fuzzy match on address + m² + rooms + geo
   - cluster into `property_entities` table
 
-### 3.4 Notifications
-- Telegram alerts (new listing matches saved filter).
-- Rate limit notifications to avoid spam.
+### 3.2 Telegram alerts
+- Scraper CronJobs fire a Telegram Bot API notification when new listings match saved filters (price/bedrooms/neighborhood).
+- Rate-limit to avoid spam (e.g., max 10 notifications per scrape run, or digest mode).
+- No extra service — notification logic lives in the scraper itself.
+
+### 3.3 Map view (Leaflet)
+- Optional: Leaflet map with clustering, color by safety score or price.
+- Only if the table view isn't enough.
+
+### 3.4 Fotocasa / additional portals
+- Only if Tier 1 portals don't cover enough inventory.
+- Playwright-based, very low frequency.
 
 ### 3.5 Observability + reliability
 - Prometheus metrics + Grafana dashboard.
@@ -118,9 +114,7 @@ Pick only what pays rent (figuratively).
 - requests: 100m CPU / 256Mi
 - limits: 500m CPU / 768Mi
 
-### Scraper CronJobs (Playwright, later)
-- requests: 250m CPU / 1Gi
-- limits: 1000m CPU / 1.5Gi
+
 
 ## Risks + mitigations
 - Portal HTML changes → keep parsers simple, store one sample payload for debugging.
