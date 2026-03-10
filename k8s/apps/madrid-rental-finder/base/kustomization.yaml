@@ -17,6 +17,7 @@ resources:
   - cronjob-scrape-enalquiler.yaml
   - cronjob-reconcile.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: madrid-rental-finder
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: madrid-rental-finder
+      app.kubernetes.io/managed-by: kustomize
