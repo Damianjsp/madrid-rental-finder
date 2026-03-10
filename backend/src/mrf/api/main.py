@@ -1,6 +1,7 @@
 """FastAPI application — read-only API for Madrid Rental Finder."""
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -29,9 +30,15 @@ from mrf.db.models import (
     Portal,
     ScraperRun,
 )
+from mrf.core.config import settings
 from mrf.db.session import get_db_dep
 
 log = logging.getLogger("mrf.api")
+
+
+def _escape_like(value: str) -> str:
+    return re.sub(r"([%_\\])", lambda m: "\\" + m.group(1), value)
+
 
 app = FastAPI(
     title="Madrid Rental Finder API",
@@ -43,7 +50,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # LAN-only; tighten in production
+    allow_origins=settings.allowed_origins,
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -59,8 +66,8 @@ def healthz(db: Session = Depends(get_db_dep)):
     try:
         db.execute(text("SELECT 1"))
         return {"status": "ok", "db": "connected"}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=503, detail={"status": "error"})
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +132,9 @@ def list_listings(
     if size_max is not None:
         q = q.filter(Listing.size_m2 <= size_max)
     if district:
-        q = q.filter(Listing.district_raw.ilike(f"%{district}%"))
+        q = q.filter(Listing.district_raw.ilike(f"%{_escape_like(district)}%", escape="\\"))
     if neighborhood:
-        q = q.filter(Listing.neighborhood_raw.ilike(f"%{neighborhood}%"))
+        q = q.filter(Listing.neighborhood_raw.ilike(f"%{_escape_like(neighborhood)}%", escape="\\"))
     if portal:
         p_obj = db.query(Portal).filter_by(key=portal).first()
         if p_obj:
@@ -196,7 +203,7 @@ def list_neighborhoods(
 ):
     q = db.query(Neighborhood)
     if municipality:
-        q = q.filter(Neighborhood.municipality.ilike(f"%{municipality}%"))
+        q = q.filter(Neighborhood.municipality.ilike(f"%{_escape_like(municipality)}%", escape="\\"))
     if min_safety is not None:
         q = q.filter(Neighborhood.safety_score >= min_safety)
     if min_transport is not None:

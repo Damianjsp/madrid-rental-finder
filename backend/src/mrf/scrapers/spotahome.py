@@ -26,6 +26,7 @@ log = logging.getLogger("mrf.scrapers.spotahome")
 BASE_URL = "https://www.spotahome.com"
 MARKERS_URL = f"{BASE_URL}/api/fe/marketplace/markers/madrid"
 SEARCH_URL = f"{BASE_URL}/es/s/madrid"
+MAX_PAGES = 100
 PAGE_SIZE = 15  # JSON-LD returns 15 per page
 
 
@@ -224,7 +225,7 @@ class SpotahomeScraper(BaseScraper):
         page = 1
         seen_ids: set[str] = set()
 
-        while True:
+        while page <= MAX_PAGES:
             url = f"{SEARCH_URL}?page={page}" if page > 1 else SEARCH_URL
             log.info(f"[spotahome] Fetching search page {page}")
 
@@ -265,6 +266,9 @@ class SpotahomeScraper(BaseScraper):
             log.info(f"[spotahome] Page {page}: {len(page_listings)} listings")
             yield page_listings
             page += 1
+
+        if page > MAX_PAGES:
+            log.warning(f"[spotahome] Reached MAX_PAGES={MAX_PAGES}; stopping pagination")
 
         # Step 3: emit any remaining markers not seen in search pages
         # (markers with IDs not in any JSON-LD page — use sparse data)
