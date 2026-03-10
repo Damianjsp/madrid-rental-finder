@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from mrf.api.schemas import (
     ListingDetailOut,
+    ListingImageOut,
     ListingsPage,
     ListingOut,
     NeighborhoodOut,
@@ -175,7 +176,7 @@ def get_listing(listing_id: int, db: Session = Depends(get_db_dep)):
     out = ListingDetailOut.model_validate(listing)
     out.portal_key = portal.key if portal else None
     out.images = [
-        {"id": img.id, "url": img.url, "position": img.position}
+        ListingImageOut(id=img.id, url=img.url, position=img.position)
         for img in sorted(listing.images, key=lambda i: i.position or 999)
     ]
     return out

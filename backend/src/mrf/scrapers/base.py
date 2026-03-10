@@ -1,13 +1,11 @@
 """Base scraper class with rate limiting, session management, and run tracking."""
 
-import asyncio
 import logging
 import random
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Any, Iterator, Optional
-from contextlib import contextmanager
+from typing import Iterator, Optional
 
 import httpx
 from sqlalchemy.orm import Session
@@ -17,7 +15,6 @@ from mrf.db.session import get_db
 
 log = logging.getLogger(__name__)
 
-# Realistic user agents — rotate to reduce fingerprint
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -46,28 +43,12 @@ class ListingData:
     """Normalized listing extracted by a scraper."""
 
     __slots__ = (
-        "source_listing_id",
-        "url",
-        "title",
-        "description",
-        "price_eur",
-        "deposit_eur",
-        "expenses_included",
-        "bedrooms",
-        "bathrooms",
-        "size_m2",
-        "property_type",
-        "furnished",
-        "elevator",
-        "parking",
-        "address_raw",
-        "neighborhood_raw",
-        "district_raw",
-        "municipality_raw",
-        "lat",
-        "lon",
-        "images",
-        "raw",
+        "source_listing_id", "url", "title", "description",
+        "price_eur", "deposit_eur", "expenses_included",
+        "bedrooms", "bathrooms", "size_m2",
+        "property_type", "furnished", "elevator", "parking",
+        "address_raw", "neighborhood_raw", "district_raw", "municipality_raw",
+        "lat", "lon", "images", "raw",
     )
 
     def __init__(self, source_listing_id: str, url: str, **kwargs):
@@ -108,6 +89,18 @@ class BaseScraper(ABC):
         self._portal_id: Optional[int] = None
         self._run_id: Optional[int] = None
 
+    # ---- helpers ----
+
+    @staticmethod
+    def _dedupe_images(images: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for img in images:
+            if img and img not in seen:
+                seen.add(img)
+                out.append(img)
+        return out
+
     # ---- HTTP client ----
 
     def _build_client(self) -> httpx.Client:
@@ -124,19 +117,17 @@ class BaseScraper(ABC):
         )
 
     def _get(self, url: str, **kwargs) -> httpx.Response:
-        """GET with jitter delay and 429 handling."""
         delay = random.uniform(self.rate_min, self.rate_max)
-        log.debug(f"Sleeping {delay:.1f}s before request to {url}")
+        log.debug("Sleeping %.1fs before %s", delay, url)
         time.sleep(delay)
-
         assert self._client is not None
         resp = self._client.get(url, **kwargs)
         if resp.status_code == 429:
-            log.warning(f"429 from {url} — backing off 60s")
+            log.warning("429 from %s — backing off 60s", url)
             time.sleep(60)
             raise RateLimitError(f"429 from {url}")
         if resp.status_code == 403:
-            log.error(f"403 from {url} — stopping scraper")
+            log.error("403 from %s — stopping scraper", url)
             raise ScraperError(f"403 Forbidden: {url}")
         resp.raise_for_status()
         return resp
@@ -154,7 +145,7 @@ class BaseScraper(ABC):
         db.add(run)
         db.flush()
         db.refresh(run)
-        log.info(f"[{self.portal_key}] Scraper run #{run.id} started")
+        log.info("[%s] Scraper run #%s started", self.portal_key, run.id)
         return run.id
 
     def _finish_run(self, db: Session, run_id: int, stats: dict, error: Optional[str] = None):
@@ -169,81 +160,83 @@ class BaseScraper(ABC):
         run.error_message = error
         db.flush()
         log.info(
-            f"[{self.portal_key}] Run #{run_id} finished: "
-            f"seen={run.listings_seen} new={run.listings_new} updated={run.listings_updated}"
+            "[%s] Run #%s finished: seen=%s new=%s updated=%s",
+            self.portal_key, run_id,
+            run.listings_seen, run.listings_new, run.listings_updated,
         )
 
     # ---- Upsert ----
 
+    _UPDATE_FIELDS = (
+        "url", "title", "description", "price_eur", "deposit_eur",
+        "expenses_included", "bedrooms", "bathrooms", "size_m2",
+        "property_type", "furnished", "elevator", "parking",
+        "address_raw", "neighborhood_raw", "district_raw",
+        "municipality_raw", "lat", "lon",
+    )
+
     def _upsert_listing(self, db: Session, data: ListingData) -> tuple[bool, bool]:
-        """
-        Returns (is_new, was_updated).
-        Upserts by (portal_id, source_listing_id).
-        """
+        """Upsert by (portal_id, source_listing_id). Returns (is_new, was_updated)."""
         existing: Optional[Listing] = (
             db.query(Listing)
             .filter_by(portal_id=self._portal_id, source_listing_id=data.source_listing_id)
             .first()
         )
         now = datetime.now(timezone.utc)
+        images = self._dedupe_images(data.images)
 
         if existing is None:
             listing = Listing(
                 portal_id=self._portal_id,
                 source_listing_id=data.source_listing_id,
-                url=data.url,
-                title=data.title,
-                description=data.description,
-                price_eur=data.price_eur,
-                deposit_eur=data.deposit_eur,
+                url=data.url, title=data.title, description=data.description,
+                price_eur=data.price_eur, deposit_eur=data.deposit_eur,
                 expenses_included=data.expenses_included,
-                bedrooms=data.bedrooms,
-                bathrooms=data.bathrooms,
-                size_m2=data.size_m2,
-                property_type=data.property_type,
-                furnished=data.furnished,
-                elevator=data.elevator,
-                parking=data.parking,
-                address_raw=data.address_raw,
-                neighborhood_raw=data.neighborhood_raw,
-                district_raw=data.district_raw,
-                municipality_raw=data.municipality_raw,
-                lat=data.lat,
-                lon=data.lon,
-                first_seen_at=now,
-                last_seen_at=now,
-                scraped_at=now,
-                is_active=True,
-                scraper_run_id=self._run_id,
-                raw=data.raw,
+                bedrooms=data.bedrooms, bathrooms=data.bathrooms, size_m2=data.size_m2,
+                property_type=data.property_type, furnished=data.furnished,
+                elevator=data.elevator, parking=data.parking,
+                address_raw=data.address_raw, neighborhood_raw=data.neighborhood_raw,
+                district_raw=data.district_raw, municipality_raw=data.municipality_raw,
+                lat=data.lat, lon=data.lon,
+                first_seen_at=now, last_seen_at=now, scraped_at=now,
+                is_active=True, scraper_run_id=self._run_id, raw=data.raw or {},
             )
             db.add(listing)
             db.flush()
             db.refresh(listing)
-            # Add images
-            for pos, img_url in enumerate(data.images):
+            for pos, img_url in enumerate(images):
                 db.add(ListingImage(listing_id=listing.id, url=img_url, position=pos))
             db.flush()
             return True, False
-        else:
-            updated = False
-            if existing.price_eur != data.price_eur:
-                existing.price_eur = data.price_eur
+
+        # --- update existing ---
+        updated = False
+        for field in self._UPDATE_FIELDS:
+            new_val = getattr(data, field)
+            if new_val is not None and getattr(existing, field) != new_val:
+                setattr(existing, field, new_val)
                 updated = True
-            existing.last_seen_at = now
-            existing.scraped_at = now
-            existing.is_active = True
-            existing.scraper_run_id = self._run_id
-            # Update other fields if we have them
-            for field in ("title", "description", "bedrooms", "bathrooms", "size_m2",
-                          "address_raw", "neighborhood_raw", "district_raw", "property_type"):
-                new_val = getattr(data, field)
-                if new_val is not None:
-                    setattr(existing, field, new_val)
-            if data.raw:
-                existing.raw = data.raw
-            db.flush()
-            return False, updated
+        existing.last_seen_at = now
+        existing.scraped_at = now
+        existing.is_active = True
+        existing.scraper_run_id = self._run_id
+        if data.raw:
+            existing.raw = data.raw
+
+        # Merge images
+        if images:
+            current_urls = {img.url for img in existing.images}
+            max_pos = max((img.position or 0 for img in existing.images), default=-1) + 1
+            for img_url in images:
+                if img_url not in current_urls:
+                    db.add(ListingImage(
+                        listing_id=existing.id, url=img_url, position=max_pos,
+                    ))
+                    max_pos += 1
+                    updated = True
+
+        db.flush()
+        return False, updated
 
     # ---- Abstract interface ----
 
@@ -258,6 +251,16 @@ class BaseScraper(ABC):
         ...
 
     # ---- Main run loop ----
+
+    def _needs_detail(self, partial: ListingData, existing: Optional[Listing]) -> bool:
+        """Two-stage: fetch detail only for new listings or those missing key fields."""
+        if existing is None:
+            return True
+        # Re-fetch if key fields are still missing
+        return not all([
+            existing.description, existing.bedrooms,
+            existing.size_m2, existing.neighborhood_raw,
+        ])
 
     def run(self) -> dict:
         stats = {"seen": 0, "new": 0, "updated": 0}
@@ -276,11 +279,22 @@ class BaseScraper(ABC):
                 for page_listings in self.list_pages():
                     for partial in page_listings:
                         stats["seen"] += 1
-                        try:
-                            full = self.fetch_detail(partial)
-                        except (ScraperError, httpx.HTTPError) as e:
-                            log.warning(f"Detail fetch failed for {partial.url}: {e}")
-                            full = partial
+
+                        # Check if detail fetch is needed
+                        existing = (
+                            db.query(Listing)
+                            .filter_by(
+                                portal_id=self._portal_id,
+                                source_listing_id=partial.source_listing_id,
+                            )
+                            .first()
+                        )
+                        full = partial
+                        if self._needs_detail(partial, existing):
+                            try:
+                                full = self.fetch_detail(partial)
+                            except (ScraperError, httpx.HTTPError) as e:
+                                log.warning("Detail fetch failed for %s: %s", partial.url, e)
 
                         is_new, was_updated = self._upsert_listing(db, full)
                         if is_new:
@@ -294,10 +308,10 @@ class BaseScraper(ABC):
                 db.commit()
         except RateLimitError as e:
             error_msg = str(e)
-            log.error(f"[{self.portal_key}] Rate limited: {e}")
+            log.error("[%s] Rate limited: %s", self.portal_key, e)
         except Exception as e:
             error_msg = str(e)
-            log.exception(f"[{self.portal_key}] Unexpected error")
+            log.exception("[%s] Unexpected error", self.portal_key)
         finally:
             if self._client:
                 self._client.close()
