@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Madrid Rental Finder — Research Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0b1020',
+            panel: '#111827',
+            panel2: '#0f172a',
+            muted: '#94a3b8',
+            line: '#1f2937',
+            accent: '#38bdf8'
+          },
+          boxShadow: {
+            glow: '0 0 0 1px rgba(56,189,248,.15), 0 10px 30px rgba(2,6,23,.45)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background: radial-gradient(circle at top, #162033 0%, #0b1020 45%, #070b16 100%); }
+    .tab-btn.active { background: rgba(56,189,248,.15); color: #e0f2fe; border-color: rgba(56,189,248,.35); }
+    .section-panel { display: none; }
+    .section-panel.active { display: block; }
+    .sticky-blur { backdrop-filter: blur(12px); background: rgba(7,11,22,.82); }
+    .table-wrap::-webkit-scrollbar { height: 10px; width: 10px; }
+    .table-wrap::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    .sort-indicator::after { content: '↕'; font-size: .75rem; margin-left: .4rem; color: #64748b; }
+    .sort-asc::after { content: '↑'; color: #7dd3fc; }
+    .sort-desc::after { content: '↓'; color: #7dd3fc; }
+    .row-highlight { box-shadow: inset 4px 0 0 #22c55e; }
+  </style>
+</head>
+<body class="text-slate-100 min-h-screen">
+  <header class="sticky top-0 z-40 border-b border-slate-800 sticky-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="py-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-sky-300 uppercase tracking-[0.2em] text-xs font-semibold">Madrid Rental Finder</p>
+          <h1 class="text-2xl sm:text-3xl font-bold">Interactive Research Dashboard</h1>
+          <p class="text-slate-400 text-sm mt-1">Safety, transport, rent levels, and scraping feasibility in one static report.</p>
+        </div>
+        <nav class="flex flex-wrap gap-2">
+          <button class="tab-btn active px-4 py-2 rounded-xl border border-slate-700 text-sm font-medium transition" data-tab="safety">Safety &amp; Transport</button>
+          <button class="tab-btn px-4 py-2 rounded-xl border border-slate-700 text-sm font-medium transition" data-tab="rental">Rental Costs</button>
+          <button class="tab-btn px-4 py-2 rounded-xl border border-slate-700 text-sm font-medium transition" data-tab="scraping">Scraping Feasibility</button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <section id="safety" class="section-panel active space-y-6">
+      <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Top recommendation</p><p class="text-xl font-semibold mt-2">Chamberí</p><p class="text-sm text-slate-400 mt-1">Dense metro coverage, very safe, fast to center.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Best suburb combo</p><p class="text-xl font-semibold mt-2">Tres Cantos</p><p class="text-sm text-slate-400 mt-1">Safety 5 + C4 commuter rail + realistic commute.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Zone rule</p><p class="text-xl font-semibold mt-2">A/B1 sweet spot</p><p class="text-sm text-slate-400 mt-1">Best balance of fare cost and commute sanity.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Watchouts</p><p class="text-xl font-semibold mt-2">Street-level variance</p><p class="text-sm text-slate-400 mt-1">Usera, Vallecas, Centro pockets change block by block.</p></div>
+      </div>
+      <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+          <div><h2 class="text-xl font-semibold">Safety &amp; Transport master table</h2><p class="text-sm text-slate-400">Top 15 picks are highlighted. Click headers to sort. Search works across all columns.</p></div>
+          <input id="search-safety" type="text" placeholder="Search area, district, metro, zone..." class="w-full lg:w-80 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2 text-sm outline-none focus:border-sky-400" />
+        </div>
+        <div class="table-wrap overflow-auto rounded-xl border border-slate-800">
+          <table id="table-safety" class="min-w-full text-sm">
+            <thead class="bg-slate-900/95 text-slate-300 sticky top-0"><tr><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Area</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">District/City</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Safety</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Metro</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Cercanías</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Time</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Zone</th></tr></thead>
+            <tbody id="tbody-safety" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="rental" class="section-panel space-y-6">
+      <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Cheapest recurring 2-bed cluster</p><p class="text-xl font-semibold mt-2">Móstoles / Alcalá / Torrejón</p><p class="text-sm text-slate-400 mt-1">Visible stock sits near the €1.0k–€1.2k band.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">City value picks</p><p class="text-xl font-semibold mt-2">Latina &amp; Carabanchel</p><p class="text-sm text-slate-400 mt-1">Still in Madrid city without prime-district tax.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Painful truth</p><p class="text-xl font-semibold mt-2">Sub-€800 is dead</p><p class="text-sm text-slate-400 mt-1">No major sampled area produced a reliable 2-bed average below €800.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Market direction</p><p class="text-xl font-semibold mt-2">Still up</p><p class="text-sm text-slate-400 mt-1">Demand high, stock tight, prices still pushing upward.</p></div>
+      </div>
+      <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+          <div><h2 class="text-xl font-semibold">Rental costs heat table</h2><p class="text-sm text-slate-400">Color intensity tracks 2-bed average. Best-value areas get a green accent.</p></div>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex flex-wrap gap-2">
+              <button class="price-filter px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-sm active" data-range="all">All</button>
+              <button class="price-filter px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-sm" data-range="budget">Budget</button>
+              <button class="price-filter px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-sm" data-range="mid">Mid</button>
+              <button class="price-filter px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-sm" data-range="premium">Premium</button>
+              <button class="price-filter px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-sm" data-range="luxury">Luxury</button>
+            </div>
+            <input id="search-rental" type="text" placeholder="Search area..." class="w-full xl:w-72 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2 text-sm outline-none focus:border-sky-400" />
+          </div>
+        </div>
+        <div class="table-wrap overflow-auto rounded-xl border border-slate-800">
+          <table id="table-rental" class="min-w-full text-sm">
+            <thead class="bg-slate-900/95 text-slate-300"><tr><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Area</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">1-bed</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">2-bed</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">3-bed</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">House</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Chalet</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Trend</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Category</th></tr></thead>
+            <tbody id="tbody-rental" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="grid xl:grid-cols-2 gap-4">
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5"><h3 class="text-lg font-semibold mb-3">Best value shortlist</h3><ul class="space-y-3 text-sm text-slate-300"><li><span class="text-green-400 font-semibold">Alcalá de Henares</span> — Big-city services, Renfe, and around €1,090 for 2-bed visible stock.</li><li><span class="text-green-400 font-semibold">Alcorcón</span> — MetroSur + Cercanías with 2-bed average around €1,262.</li><li><span class="text-green-400 font-semibold">Leganés</span> — Practical, connected, less sexy, more useful. Correct.</li><li><span class="text-green-400 font-semibold">Móstoles</span> — One of the cheapest large municipalities in the sample.</li><li><span class="text-green-400 font-semibold">Tres Cantos</span> — Quiet, planned, safer, commuter-rail friendly.</li><li><span class="text-green-400 font-semibold">Latina / Carabanchel</span> — City access without Salamanca-level punishment.</li></ul></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5"><h3 class="text-lg font-semibold mb-3">Market trend</h3><div class="space-y-3 text-sm text-slate-300"><p><span class="text-sky-300 font-semibold">Direction:</span> up. Not cooling in any meaningful way.</p><p><span class="text-sky-300 font-semibold">Main driver:</span> demand is high, supply is constrained, regulation since 2019 reduced available rental stock.</p><p><span class="text-sky-300 font-semibold">Prime examples:</span> Salamanca 2-bed ~€2,793, Chamberí ~€2,840, Pozuelo ~€3,600, Majadahonda ~€3,075.</p><p><span class="text-sky-300 font-semibold">Practical floor:</span> even “cheap” commuter cities often sit at €1,000–€1,300 for a 2-bed.</p></div></div>
+      </div>
+    </section>
+
+    <section id="scraping" class="section-panel space-y-6">
+      <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Best immediate targets</p><p class="text-xl font-semibold mt-2">Pisos + Yaencontre + Spotahome</p><p class="text-sm text-slate-400 mt-1">Fast to implement, low ban risk, solid Madrid coverage.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Main strategic move</p><p class="text-xl font-semibold mt-2">Apply for Idealista API</p><p class="text-sm text-slate-400 mt-1">Without it, Idealista scraping is pain con esteroides.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Recommended minimum stack</p><p class="text-xl font-semibold mt-2">httpx + Playwright</p><p class="text-sm text-slate-400 mt-1">SSR portals via HTTP; hard portals via browser automation only when needed.</p></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5 shadow-glow"><p class="text-sm text-slate-400">Critical insight</p><p class="text-xl font-semibold mt-2">Don’t scrape everything</p><p class="text-sm text-slate-400 mt-1">Idealista + Pisos + Yaencontre + Spotahome likely gets ~90% of useful inventory.</p></div>
+      </div>
+      <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+          <div><h2 class="text-xl font-semibold">Portal comparison</h2><p class="text-sm text-slate-400">Difficulty, API path, safe rates, and SSR signal. Sortable and searchable.</p></div>
+          <input id="search-scraping" type="text" placeholder="Search portal, method, risk..." class="w-full lg:w-80 rounded-xl bg-slate-900 border border-slate-700 px-4 py-2 text-sm outline-none focus:border-sky-400" />
+        </div>
+        <div class="table-wrap overflow-auto rounded-xl border border-slate-800">
+          <table id="table-scraping" class="min-w-full text-sm">
+            <thead class="bg-slate-900/95 text-slate-300"><tr><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Portal</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Anti-bot</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">API</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Method</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Safe rate</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">Ban risk</th><th class="px-4 py-3 text-left cursor-pointer sort-indicator">SSR</th></tr></thead>
+            <tbody id="tbody-scraping" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="grid xl:grid-cols-2 gap-4">
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5"><h3 class="text-lg font-semibold mb-3">Recommended approach</h3><ol class="space-y-3 text-sm text-slate-300 list-decimal ml-5"><li><span class="text-green-400 font-semibold">Apply for Idealista API access immediately.</span> Approval time is the bottleneck.</li><li><span class="text-green-400 font-semibold">Ship SSR wins first:</span> Pisos.com, Yaencontre, Spotahome, Habitaclia.</li><li><span class="text-green-400 font-semibold">Use browser automation only for hard targets:</span> Fotocasa and Milanuncios if coverage gaps justify the pain.</li><li><span class="text-green-400 font-semibold">Deduplicate aggressively:</span> many agencies post on multiple portals.</li></ol></div>
+        <div class="bg-panel/90 border border-slate-800 rounded-2xl p-5"><h3 class="text-lg font-semibold mb-3">Technical stack recommendation</h3><div class="grid sm:grid-cols-2 gap-3 text-sm"><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">HTTP layer</span><br/>httpx, fake-useragent</div><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">Parsing</span><br/>BeautifulSoup + lxml or selectolax</div><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">Hard portals</span><br/>Playwright + stealth</div><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">Data model</span><br/>Pydantic + SQLModel / SQLAlchemy</div><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">Automation</span><br/>APScheduler</div><div class="rounded-xl bg-slate-900/80 border border-slate-800 p-3"><span class="text-sky-300 font-semibold">Alerts</span><br/>python-telegram-bot</div></div></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const safetyData = [{area:'Salamanca (Recoletos/Goya/Lista)',district:'Salamanca (Madrid)',safety:5,metro:'L2/L4/L5/L6/L9/L10',cercanias:'—',time:15,timeLabel:'10–20 min',zone:'A',recommended:true},{area:'Chamberí (Almagro/Ríos Rosas/Trafalgar)',district:'Chamberí',safety:5,metro:'L1/L2/L4/L5/L7/L10',cercanias:'—',time:15,timeLabel:'10–20 min',zone:'A',recommended:true},{area:'Retiro (Ibiza/Estrella/Niño Jesús)',district:'Retiro',safety:5,metro:'L2/L6/L9',cercanias:'—',time:15,timeLabel:'10–20 min',zone:'A',recommended:true},{area:'Chamartín (El Viso/Hispanoamérica)',district:'Chamartín',safety:5,metro:'L9/L10',cercanias:'C1/C2/C3/C4/C7/C8/C10',time:15,timeLabel:'10–20 min',zone:'A',recommended:true},{area:'Argüelles/Moncloa',district:'Moncloa-Aravaca',safety:4,metro:'L3/L6',cercanias:'—',time:15,timeLabel:'10–20 min',zone:'A',recommended:true},{area:'Pacífico/Adelfas',district:'Retiro',safety:4,metro:'L1/L6',cercanias:'C1/C2/C7/C10 nearby',time:20,timeLabel:'15–25 min',zone:'A',recommended:false},{area:'Delicias/Legazpi',district:'Arganzuela',safety:4,metro:'L3/L6',cercanias:'C1/C10 (Delicias)',time:20,timeLabel:'15–25 min',zone:'A',recommended:true},{area:'Madrid Río / Imperial',district:'Arganzuela',safety:4,metro:'L5/L6/L10',cercanias:'C1/C7/C10 nearby',time:20,timeLabel:'15–25 min',zone:'A',recommended:true},{area:'Valdezarza/Peñagrande',district:'Fuencarral-El Pardo',safety:4,metro:'L7',cercanias:'—',time:30,timeLabel:'25–35 min',zone:'A',recommended:false},{area:'Mirasierra/Paco de Lucía',district:'Fuencarral-El Pardo',safety:4,metro:'L9',cercanias:'C7/C8',time:30,timeLabel:'25–35 min',zone:'A',recommended:true},{area:'Arturo Soria',district:'Ciudad Lineal',safety:4,metro:'L4',cercanias:'—',time:28,timeLabel:'20–35 min',zone:'A',recommended:false},{area:'Sanchinarro',district:'Hortaleza',safety:4,metro:'L1 via Pinar / ML1 nearby',cercanias:'C4 (Fuente de la Mora)',time:33,timeLabel:'25–40 min',zone:'A',recommended:true},{area:'Las Tablas',district:'Fuencarral-El Pardo',safety:4,metro:'L10',cercanias:'C4 connection',time:33,timeLabel:'25–40 min',zone:'A',recommended:false},{area:'Valdebebas',district:'Hortaleza',safety:4,metro:'L8 near Feria/Barajas',cercanias:'C1/C10 (Valdebebas)',time:40,timeLabel:'35–45 min',zone:'A',recommended:true},{area:'Conde de Orgaz',district:'Hortaleza',safety:4,metro:'L4/L5',cercanias:'—',time:33,timeLabel:'25–40 min',zone:'A',recommended:false},{area:'Carabanchel (Opañel/Comillas)',district:'Carabanchel',safety:3,metro:'L5/L6',cercanias:'—',time:33,timeLabel:'25–40 min',zone:'A',recommended:false},{area:'Usera (Almendrales/Pradolongo)',district:'Usera',safety:2.5,metro:'L6 / L3',cercanias:'C5 (Doce de Octubre)',time:28,timeLabel:'20–35 min',zone:'A',recommended:false},{area:'Puente de Vallecas',district:'Puente de Vallecas',safety:2.5,metro:'L1',cercanias:'C2/C7/C8',time:30,timeLabel:'20–40 min',zone:'A',recommended:false},{area:'Villaverde Alto',district:'Villaverde',safety:2.5,metro:'L3',cercanias:'C4/C5',time:30,timeLabel:'25–40 min',zone:'A',recommended:false},{area:'Lavapiés/Embajadores',district:'Centro',safety:2.5,metro:'L3/L5',cercanias:'C5 (Embajadores)',time:10,timeLabel:'5–15 min',zone:'A',recommended:false},{area:'Sol/Gran Vía/Callao',district:'Centro',safety:3,metro:'L1/L2/L3/L5/L10',cercanias:'—',time:5,timeLabel:'0–10 min',zone:'A',recommended:false},{area:'Tetuán',district:'Tetuán',safety:3,metro:'L1/L2/L6',cercanias:'—',time:18,timeLabel:'10–25 min',zone:'A',recommended:false},{area:'Villaverde Bajo / San Cristóbal',district:'Villaverde',safety:1.5,metro:'L3',cercanias:'C3/C4',time:30,timeLabel:'25–40 min',zone:'A',recommended:false},{area:'Puerta del Ángel / Lucero',district:'Latina',safety:3,metro:'L6',cercanias:'C1/C7/C10 nearby',time:28,timeLabel:'20–35 min',zone:'A',recommended:false},{area:'Pozuelo (Estación)',district:'Pozuelo de Alarcón',safety:5,metro:'ML2/ML3 link',cercanias:'C7/C10',time:25,timeLabel:'20–30 min',zone:'B1',recommended:true},{area:'Pozuelo (Prado de Somosaguas)',district:'Pozuelo',safety:5,metro:'ML2',cercanias:'—',time:40,timeLabel:'35–45 min',zone:'B1',recommended:false},{area:'Majadahonda',district:'Majadahonda',safety:4.5,metro:'—',cercanias:'C7/C10',time:30,timeLabel:'25–35 min',zone:'B2',recommended:true},{area:'Las Rozas',district:'Las Rozas',safety:4.5,metro:'—',cercanias:'C7/C10',time:33,timeLabel:'25–40 min',zone:'B2',recommended:true},{area:'Torrelodones',district:'Torrelodones',safety:4,metro:'—',cercanias:'C8/C10',time:40,timeLabel:'35–45 min',zone:'B2/B3',recommended:false},{area:'Tres Cantos',district:'Tres Cantos',safety:5,metro:'—',cercanias:'C4',time:35,timeLabel:'30–40 min',zone:'B1',recommended:true},{area:'Alcobendas (La Moraleja)',district:'Alcobendas',safety:5,metro:'L10 nearby',cercanias:'—',time:43,timeLabel:'35–50 min',zone:'B1',recommended:false},{area:'Alcobendas (Centro)',district:'Alcobendas',safety:4,metro:'L10',cercanias:'C4 (Valdelasfuentes)',time:38,timeLabel:'30–45 min',zone:'B1',recommended:false},{area:'San Sebastián de los Reyes',district:'SS de los Reyes',safety:4,metro:'L10',cercanias:'—',time:43,timeLabel:'35–50 min',zone:'B1',recommended:false},{area:'Rivas-Vaciamadrid',district:'Rivas',safety:4,metro:'L9',cercanias:'—',time:43,timeLabel:'35–50 min',zone:'B1/B2',recommended:false},{area:'Coslada',district:'Coslada',safety:3.5,metro:'L7',cercanias:'C2/C7',time:25,timeLabel:'20–30 min',zone:'B1',recommended:true},{area:'San Fernando de Henares',district:'San Fernando',safety:3.5,metro:'L7',cercanias:'C2',time:30,timeLabel:'25–35 min',zone:'B1',recommended:false},{area:'Torrejón de Ardoz',district:'Torrejón',safety:3.5,metro:'—',cercanias:'C2/C7',time:30,timeLabel:'25–35 min',zone:'B2',recommended:false},{area:'Alcalá de Henares',district:'Alcalá',safety:3.5,metro:'—',cercanias:'C2/C7',time:40,timeLabel:'35–45 min',zone:'B3',recommended:false},{area:'Getafe (Sector 3)',district:'Getafe',safety:3.5,metro:'L12',cercanias:'C4',time:25,timeLabel:'20–30 min',zone:'B1',recommended:true},{area:'Getafe (Centro)',district:'Getafe',safety:3,metro:'L12',cercanias:'C4',time:25,timeLabel:'20–30 min',zone:'B1',recommended:false},{area:'Leganés (Zarzaquemada)',district:'Leganés',safety:3,metro:'L12',cercanias:'C5',time:25,timeLabel:'20–30 min',zone:'B1',recommended:false},{area:'Leganés (Centro)',district:'Leganés',safety:3,metro:'L12',cercanias:'C5',time:28,timeLabel:'20–35 min',zone:'B1',recommended:false},{area:'Alcorcón (Retamas)',district:'Alcorcón',safety:3.5,metro:'L12',cercanias:'C5',time:28,timeLabel:'20–35 min',zone:'B1',recommended:false},{area:'Alcorcón (Central)',district:'Alcorcón',safety:3,metro:'L10 + L12',cercanias:'C5',time:28,timeLabel:'20–35 min',zone:'B1',recommended:false},{area:'Móstoles (El Soto)',district:'Móstoles',safety:3,metro:'L12',cercanias:'C5',time:33,timeLabel:'25–40 min',zone:'B2',recommended:false},{area:'Móstoles (Central)',district:'Móstoles',safety:3,metro:'L12',cercanias:'C5',time:38,timeLabel:'30–45 min',zone:'B2',recommended:false},{area:'Boadilla del Monte',district:'Boadilla',safety:4.5,metro:'ML3',cercanias:'—',time:45,timeLabel:'35–55 min',zone:'B2',recommended:false},{area:'Villaviciosa de Odón',district:'Villaviciosa',safety:4,metro:'ML3',cercanias:'—',time:53,timeLabel:'45–60 min',zone:'B2',recommended:false},{area:'Fuenlabrada',district:'Fuenlabrada',safety:2.5,metro:'L12',cercanias:'C5',time:35,timeLabel:'25–45 min',zone:'B2',recommended:false},{area:'Parla',district:'Parla',safety:2.5,metro:'Tranvía Parla',cercanias:'C4',time:40,timeLabel:'30–50 min',zone:'B2/B3',recommended:false}];
+
+    const rentalData = [{area:'Centro',one:1715,two:2296,three:3083,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Arganzuela',one:1381,two:1832,three:1481,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Retiro',one:1968,two:1771,three:1695,house:1600,chalet:null,trend:'↑',bestValue:false},{area:'Salamanca',one:3433,two:2793,three:2469,house:2750,chalet:null,trend:'↑',bestValue:false},{area:'Chamartín',one:2750,two:2112,three:2772,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Tetuán',one:1656,two:2527,three:2046,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Chamberí',one:1780,two:2840,three:2300,house:2250,chalet:null,trend:'↑',bestValue:false},{area:'Fuencarral-El Pardo',one:2000,two:1817,three:2725,house:2600,chalet:null,trend:'↑',bestValue:false},{area:'Moncloa-Aravaca',one:3883,two:1787,three:1872,house:2875,chalet:2325,trend:'↑',bestValue:false},{area:'Latina',one:1325,two:1427,three:1158,house:1400,chalet:null,trend:'↑',bestValue:true},{area:'Carabanchel',one:1328,two:1260,three:1306,house:null,chalet:1550,trend:'↑',bestValue:true},{area:'Usera',one:1215,two:1500,three:1430,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Puente de Vallecas',one:1412,two:1145,three:1149,house:null,chalet:null,trend:'↑',bestValue:false},{area:'Moratalaz',one:null,two:null,three:1345,house:null,chalet:null,trend:'↑',bestValue:false},{area
