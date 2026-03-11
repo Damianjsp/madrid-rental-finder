@@ -62,6 +62,7 @@ app.add_middleware(
 
 
 @app.get("/healthz", tags=["system"])
+@app.get("/api/healthz", tags=["system"], include_in_schema=False)
 def healthz(db: Session = Depends(get_db_dep)):
     try:
         db.execute(text("SELECT 1"))
