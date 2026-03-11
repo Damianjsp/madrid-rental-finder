@@ -4,15 +4,17 @@ kind: Kustomization
 namespace: madrid-rental-finder
 
 resources:
-  - ../../base
+- ../../base
 
 # Image tags — updated by CI pipeline (approach B: commit tag bumps)
 # CI runs: kustomize edit set image ...
 images:
-  - name: dahomelab.azurecr.io/madrid-rental-finder/api
-    newTag: v1.0.1
-  - name: dahomelab.azurecr.io/madrid-rental-finder/dashboard
-    newTag: v1.0.3
+- name: dahomelab.azurecr.io/madrid-rental-finder/api
+  newName: dahomelab.azurecr.io/madrid-rental-finder/api
+  newTag: sha-47fbeff34d80ef010e75d6d1a6e8d0f7f55ce96b
+- name: dahomelab.azurecr.io/madrid-rental-finder/dashboard
+  newName: dahomelab.azurecr.io/madrid-rental-finder/dashboard
+  newTag: sha-47fbeff34d80ef010e75d6d1a6e8d0f7f55ce96b
 
 patches:
-  - path: resources-patch.yaml
+- path: resources-patch.yaml
