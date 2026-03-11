@@ -19,6 +19,8 @@ spec:
         app.kubernetes.io/part-of: madrid-rental-finder
         app.kubernetes.io/component: api
     spec:
+      imagePullSecrets:
+        - name: acr-secret
       containers:
         - name: api
           image: dahomelab.azurecr.io/madrid-rental-finder/api:latest

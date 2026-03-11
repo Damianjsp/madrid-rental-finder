@@ -19,6 +19,8 @@ spec:
         app.kubernetes.io/part-of: madrid-rental-finder
         app.kubernetes.io/component: dashboard
     spec:
+      imagePullSecrets:
+        - name: acr-secret
       containers:
         - name: dashboard
           image: dahomelab.azurecr.io/madrid-rental-finder/dashboard:latest

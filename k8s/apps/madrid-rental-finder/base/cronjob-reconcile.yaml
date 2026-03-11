@@ -21,6 +21,8 @@ spec:
           labels:
             app: mrf-reconciler
         spec:
+          imagePullSecrets:
+            - name: acr-secret
           restartPolicy: Never
           containers:
             - name: reconciler
