@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from mrf.db.models import Neighborhood
 
 TITLE_NEIGHBORHOOD_RE = re.compile(r"\ben\s+([^,]+),\s*Madrid\.?$", re.IGNORECASE)
+TRAILING_NEIGHBORHOOD_RE = re.compile(r"(?:en alquiler(?: en)?|alquiler(?: en)?|en)\s+([^,.]+?)(?:,\s*Madrid|\.?)$", re.IGNORECASE)
 
 
 def _clean(text: str | None) -> str | None:
@@ -33,22 +34,53 @@ def extract_neighborhood_from_title(title: str | None) -> str | None:
     title = _clean(title)
     if not title:
         return None
+
+    candidate = None
     suffix_match = re.search(r",\s*Madrid\.?$", title, re.IGNORECASE)
-    if not suffix_match:
-        return None
-    prefix = title[:suffix_match.start()]
-    lower_prefix = prefix.casefold()
-    idx = lower_prefix.rfind(" en ")
-    if idx == -1:
-        matches = list(TITLE_NEIGHBORHOOD_RE.finditer(title))
-        if not matches:
-            return None
-        candidate = _clean(matches[-1].group(1))
-    else:
-        candidate = _clean(prefix[idx + 4:])
+    if suffix_match:
+        prefix = title[:suffix_match.start()]
+        lower_prefix = prefix.casefold()
+        idx = lower_prefix.rfind(" en ")
+        if idx != -1:
+            candidate = _clean(prefix[idx + 4:])
+        else:
+            matches = list(TITLE_NEIGHBORHOOD_RE.finditer(title))
+            if matches:
+                candidate = _clean(matches[-1].group(1))
+
+    if not candidate:
+        m = re.search(r"\ben\s+Madrid\s*,\s*([^,.]+)$", title, re.IGNORECASE)
+        if m:
+            candidate = _clean(m.group(1))
+
+    if not candidate:
+        m = re.search(r"[,\-]\s*([^,.]+)\.?$", title)
+        if m:
+            tail = _clean(m.group(1))
+            if tail and len(tail.split()) <= 4:
+                candidate = tail
+
+    if not candidate:
+        lower_title = title.casefold()
+        markers = [" en piso compartido en ", " habitaciones en ", " en "]
+        for marker in markers:
+            idx = lower_title.rfind(marker)
+            if idx != -1:
+                candidate = _clean(title[idx + len(marker):])
+                break
+
+    if not candidate:
+        m = TRAILING_NEIGHBORHOOD_RE.search(title)
+        if m:
+            candidate = _clean(m.group(1))
+
     if not candidate:
         return None
-    if normalize_place_name(candidate) in {"madrid", "comunidad de madrid"}:
+    banned = {
+        "madrid", "comunidad de madrid", "piso compartido", "apartamento", "habitacion",
+        "habitación", "estudio", "piso", "casa", "chalet", "madrid capital",
+    }
+    if normalize_place_name(candidate) in {normalize_place_name(x) for x in banned}:
         return None
     return candidate
 
