@@ -34,31 +34,31 @@ PORTAL_MAP = {
 }
 
 
-def _listing_to_partial(listing: Listing) -> ListingData:
-    """Convert DB listing to a ListingData for re-parsing."""
+def _listing_to_partial(listing: dict) -> ListingData:
+    """Convert listing dict (extracted from DB) to a ListingData for re-parsing."""
     return ListingData(
-        source_listing_id=listing.source_listing_id,
-        url=listing.url,
-        title=listing.title,
-        description=listing.description,
-        price_eur=listing.price_eur,
-        deposit_eur=listing.deposit_eur,
-        expenses_included=listing.expenses_included,
-        bedrooms=listing.bedrooms,
-        bathrooms=listing.bathrooms,
-        size_m2=float(listing.size_m2) if listing.size_m2 is not None else None,
-        property_type=listing.property_type,
-        furnished=listing.furnished,
-        elevator=listing.elevator,
-        parking=listing.parking,
-        address_raw=listing.address_raw,
-        neighborhood_raw=listing.neighborhood_raw,
-        district_raw=listing.district_raw,
-        municipality_raw=listing.municipality_raw,
-        lat=listing.lat,
-        lon=listing.lon,
-        images=[img.url for img in listing.images],
-        raw=listing.raw or {},
+        source_listing_id=listing["source_listing_id"],
+        url=listing["url"],
+        title=listing.get("title"),
+        description=listing.get("description"),
+        price_eur=listing.get("price_eur"),
+        deposit_eur=None,
+        expenses_included=None,
+        bedrooms=listing.get("bedrooms"),
+        bathrooms=listing.get("bathrooms"),
+        size_m2=float(listing["size_m2"]) if listing.get("size_m2") is not None else None,
+        property_type=listing.get("property_type"),
+        furnished=listing.get("furnished"),
+        elevator=None,
+        parking=None,
+        address_raw=listing.get("address_raw"),
+        neighborhood_raw=listing.get("neighborhood_raw"),
+        district_raw=listing.get("district_raw"),
+        municipality_raw=listing.get("municipality_raw"),
+        lat=listing.get("lat"),
+        lon=listing.get("lon"),
+        images=[],
+        raw={},
     )
 
 
@@ -97,8 +97,20 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
         if not listings:
             return
 
+        # Eagerly extract data while session is open to avoid DetachedInstanceError
+        listing_data = [
+            {"id": l.id, "portal_id": l.portal_id, "url": l.url, "source_listing_id": l.source_listing_id,
+             "title": l.title, "description": l.description, "price_eur": l.price_eur,
+             "bedrooms": l.bedrooms, "bathrooms": l.bathrooms, "size_m2": float(l.size_m2) if l.size_m2 else None,
+             "property_type": l.property_type, "furnished": l.furnished,
+             "address_raw": l.address_raw, "neighborhood_raw": l.neighborhood_raw,
+             "district_raw": l.district_raw, "municipality_raw": l.municipality_raw,
+             "lat": l.lat, "lon": l.lon}
+            for l in listings
+        ]
+
         # Group by portal
-        portal_ids = {l.portal_id for l in listings}
+        portal_ids = {ld["portal_id"] for ld in listing_data}
         portals = {p.id: p.key for p in db.query(Portal).filter(Portal.id.in_(portal_ids)).all()}
 
     # Process each portal group
@@ -113,7 +125,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
         scraper = scraper_cls()
         scraper._client = scraper._build_client()
 
-        portal_listings = [l for l in listings if l.portal_id == pid]
+        portal_listings = [ld for ld in listing_data if ld["portal_id"] == pid]
         log.info("[%s] Backfilling %s listings", pkey, len(portal_listings))
 
         for i, listing in enumerate(portal_listings, 1):
@@ -126,12 +138,12 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
 
             try:
                 resp = scraper._client.get(
-                    listing.url,
+                    listing["url"],
                     timeout=30,
                     follow_redirects=True,
                 )
                 if resp.status_code != 200:
-                    log.warning("[%s] %s returned %s", pkey, listing.url, resp.status_code)
+                    log.warning("[%s] %s returned %s", pkey, listing["url"], resp.status_code)
                     stats["failed"] += 1
                     continue
 
@@ -140,7 +152,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                 if dry_run:
                     log.info(
                         "[%s] DRY-RUN %s/%s: %s → desc=%s size=%s neigh=%s furn=%s lat=%s",
-                        pkey, i, len(portal_listings), listing.url,
+                        pkey, i, len(portal_listings), listing["url"],
                         bool(enriched.description), enriched.size_m2,
                         enriched.neighborhood_raw, enriched.furnished,
                         enriched.lat,
@@ -149,7 +161,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
 
                 # Apply updates to DB
                 with get_db() as db:
-                    db_listing = db.get(Listing, listing.id)
+                    db_listing = db.get(Listing, listing["id"])
                     if not db_listing:
                         stats["skipped"] += 1
                         continue
@@ -171,12 +183,12 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                         db_listing.scraped_at = datetime.now(timezone.utc)
                         db.flush()
                         stats["updated"] += 1
-                        log.info("[%s] Updated %s/%s: %s", pkey, i, len(portal_listings), listing.url)
+                        log.info("[%s] Updated %s/%s: %s", pkey, i, len(portal_listings), listing["url"])
                     else:
                         stats["skipped"] += 1
 
             except Exception as e:
-                log.warning("[%s] Backfill failed for %s: %s", pkey, listing.url, e)
+                log.warning("[%s] Backfill failed for %s: %s", pkey, listing["url"], e)
                 stats["failed"] += 1
 
         if scraper._client:
