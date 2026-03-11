@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Optional
 
+from typing_extensions import Literal
+
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
@@ -112,6 +114,7 @@ def list_listings(
     district: Optional[str] = Query(None, description="District name (partial match)"),
     neighborhood: Optional[str] = Query(None, description="Neighborhood name (partial match)"),
     portal: Optional[str] = Query(None, description="Portal key e.g. 'pisos'"),
+    property_type: Optional[Literal['piso', 'estudio', 'habitacion', 'all']] = Query(None),
     active_only: bool = Query(True),
     sort: str = Query("newest", pattern="^(newest|price|price_desc|size|size_desc)$"),
     page: int = Query(1, ge=1),
@@ -140,6 +143,12 @@ def list_listings(
         p_obj = db.query(Portal).filter_by(key=portal).first()
         if p_obj:
             q = q.filter(Listing.portal_id == p_obj.id)
+    if property_type and property_type != 'all':
+        q = q.filter(Listing.property_type == property_type)
+    elif property_type == 'all':
+        pass
+    else:
+        q = q.filter(Listing.property_type.in_(['piso', 'estudio']))
 
     # Sort
     if sort == "newest":
@@ -156,6 +165,7 @@ def list_listings(
     total = q.count()
     offset = (page - 1) * page_size
     items = q.offset(offset).limit(page_size).all()
+    pages = (total + page_size - 1) // page_size if total else 0
 
     # Enrich with portal key
     portal_keys = {p.id: p.key for p in db.query(Portal).all()}
@@ -166,7 +176,7 @@ def list_listings(
         out.portal_key = portal_keys.get(listing.portal_id)
         result_items.append(out)
 
-    return ListingsPage(total=total, page=page, page_size=page_size, items=result_items)
+    return ListingsPage(total=total, page=page, page_size=page_size, per_page=page_size, pages=pages, items=result_items)
 
 
 @app.get("/api/listings/{listing_id}", response_model=ListingDetailOut, tags=["listings"])

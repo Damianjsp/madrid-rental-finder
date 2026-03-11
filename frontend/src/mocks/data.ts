@@ -211,7 +211,7 @@ export const MOCK_STATS: Stats = {
 export function getMockListings(params: {
   price_min?: number; price_max?: number; bedrooms?: number;
   size_min?: number; size_max?: number; district?: string;
-  neighborhood?: string; portal?: string; active_only?: boolean;
+  neighborhood?: string; portal?: string; property_type?: 'all' | 'piso' | 'estudio' | 'habitacion'; active_only?: boolean;
   sort?: string; page?: number; per_page?: number;
 }): ListingsResponse {
   let results = [...MOCK_LISTINGS]
@@ -225,6 +225,11 @@ export function getMockListings(params: {
   if (params.district) results = results.filter(l => l.district_name?.toLowerCase() === params.district?.toLowerCase())
   if (params.neighborhood) results = results.filter(l => l.neighborhood_name?.toLowerCase() === params.neighborhood?.toLowerCase())
   if (params.portal) results = results.filter(l => l.portal_key === params.portal)
+  if (params.property_type && params.property_type !== 'all') {
+    results = results.filter(l => l.property_type === params.property_type)
+  } else if (!params.property_type) {
+    results = results.filter(l => l.property_type === 'piso' || l.property_type === 'estudio')
+  }
 
   switch (params.sort) {
     case 'price_asc': results.sort((a, b) => (a.price_eur ?? 0) - (b.price_eur ?? 0)); break

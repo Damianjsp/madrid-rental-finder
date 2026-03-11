@@ -3,6 +3,7 @@ import type { ListingsFilters } from '../types'
 
 const DEFAULT_FILTERS: ListingsFilters = {
   active_only: true,
+  property_type: undefined,
   sort: 'newest',
   page: 1,
   per_page: 25,

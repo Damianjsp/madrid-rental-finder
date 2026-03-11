@@ -71,6 +71,8 @@ class ListingsPage(BaseModel):
     total: int
     page: int
     page_size: int
+    per_page: int
+    pages: int
     items: List[ListingOut]
 
 

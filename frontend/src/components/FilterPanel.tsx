@@ -28,6 +28,7 @@ export function FilterPanel({ filters, onUpdate, onReset }: FilterPanelProps) {
     filters.district,
     filters.neighborhood,
     filters.portal,
+    filters.property_type === 'all' || filters.property_type === 'habitacion',
     !filters.active_only,
   ].filter(Boolean).length
 
@@ -46,7 +47,7 @@ export function FilterPanel({ filters, onUpdate, onReset }: FilterPanelProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         {/* Price range */}
         <div className="space-y-1">
           <label className="text-xs text-slate-500 uppercase tracking-wider">Price (€/mo)</label>
@@ -155,6 +156,22 @@ export function FilterPanel({ filters, onUpdate, onReset }: FilterPanelProps) {
             {portals.map(p => (
               <option key={p.key} value={p.key}>{p.name}</option>
             ))}
+          </select>
+        </div>
+
+        {/* Property type */}
+        <div className="space-y-1">
+          <label className="text-xs text-slate-500 uppercase tracking-wider">Property type</label>
+          <select
+            value={filters.property_type ?? ''}
+            onChange={e => onUpdate({ property_type: (e.target.value || undefined) as ListingsFilters['property_type'] })}
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+          >
+            <option value="">Apartment + Studio</option>
+            <option value="all">All</option>
+            <option value="piso">Apartment</option>
+            <option value="estudio">Studio</option>
+            <option value="habitacion">Room</option>
           </select>
         </div>
 

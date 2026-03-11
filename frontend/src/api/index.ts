@@ -33,10 +33,11 @@ export async function fetchListings(filters: ListingsFilters): Promise<ListingsR
   if (filters.district) params.set('district', filters.district)
   if (filters.neighborhood) params.set('neighborhood', filters.neighborhood)
   if (filters.portal) params.set('portal', filters.portal)
+  if (filters.property_type) params.set('property_type', filters.property_type)
   params.set('active_only', String(filters.active_only))
-  params.set('sort', filters.sort)
+  params.set('sort', filters.sort === 'price_asc' ? 'price' : filters.sort === 'size_asc' ? 'size' : filters.sort)
   params.set('page', String(filters.page))
-  params.set('per_page', String(filters.per_page))
+  params.set('page_size', String(filters.per_page))
   return apiFetch<ListingsResponse>(`/api/listings?${params}`)
 }
 

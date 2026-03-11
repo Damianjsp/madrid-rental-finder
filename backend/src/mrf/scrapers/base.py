@@ -11,8 +11,9 @@ from typing import Iterator, Optional
 import httpx
 from sqlalchemy.orm import Session
 
-from mrf.db.models import Listing, ListingImage, Portal, ScraperRun
+from mrf.db.models import District, Listing, ListingImage, Neighborhood, Portal, ScraperRun
 from mrf.db.session import get_db
+from mrf.neighborhoods import match_neighborhood
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +192,16 @@ class BaseScraper(ABC):
         "municipality_raw", "lat", "lon",
     )
 
+    def _resolve_location_ids(self, db: Session, data: ListingData) -> tuple[int | None, int | None]:
+        neighborhood_id, canonical_name, district_id = match_neighborhood(db, data.neighborhood_raw)
+        if canonical_name:
+            data.neighborhood_raw = canonical_name
+        if district_id and not data.district_raw:
+            district = db.get(District, district_id)
+            if district:
+                data.district_raw = district.name
+        return neighborhood_id, district_id
+
     def _upsert_listing(self, db: Session, data: ListingData) -> tuple[bool, bool]:
         """Upsert by (portal_id, source_listing_id). Returns (is_new, was_updated)."""
         existing: Optional[Listing] = (
@@ -202,6 +213,7 @@ class BaseScraper(ABC):
         images = self._dedupe_images(data.images)
 
         if existing is None:
+            neighborhood_id, district_id = self._resolve_location_ids(db, data)
             listing = Listing(
                 portal_id=self._portal_id,
                 source_listing_id=data.source_listing_id,
@@ -213,6 +225,7 @@ class BaseScraper(ABC):
                 elevator=data.elevator, parking=data.parking,
                 address_raw=data.address_raw, neighborhood_raw=data.neighborhood_raw,
                 district_raw=data.district_raw, municipality_raw=data.municipality_raw,
+                neighborhood_id=neighborhood_id, district_id=district_id,
                 lat=data.lat, lon=data.lon,
                 first_seen_at=now, last_seen_at=now, scraped_at=now,
                 is_active=True, scraper_run_id=self._run_id, raw=data.raw or {},
@@ -227,11 +240,18 @@ class BaseScraper(ABC):
 
         # --- update existing ---
         updated = False
+        neighborhood_id, district_id = self._resolve_location_ids(db, data)
         for field in self._UPDATE_FIELDS:
             new_val = getattr(data, field)
             if new_val is not None and getattr(existing, field) != new_val:
                 setattr(existing, field, new_val)
                 updated = True
+        if neighborhood_id is not None and existing.neighborhood_id != neighborhood_id:
+            existing.neighborhood_id = neighborhood_id
+            updated = True
+        if district_id is not None and existing.district_id != district_id:
+            existing.district_id = district_id
+            updated = True
         existing.last_seen_at = now
         existing.scraped_at = now
         existing.is_active = True

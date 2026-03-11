@@ -120,6 +120,7 @@ export interface ListingsFilters {
   district?: string
   neighborhood?: string
   portal?: string
+  property_type?: 'all' | 'piso' | 'estudio' | 'habitacion'
   active_only: boolean
   sort: 'newest' | 'price_asc' | 'price_desc' | 'size_asc' | 'size_desc'
   page: number

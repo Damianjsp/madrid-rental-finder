@@ -12,6 +12,7 @@ from typing import Iterator
 import httpx
 from selectolax.parser import HTMLParser
 
+from mrf.neighborhoods import apply_title_neighborhood_fallback, extract_neighborhood_from_title
 from mrf.scrapers.base import BaseScraper, ListingData, ParseError
 
 log = logging.getLogger("mrf.scrapers.spotahome")
@@ -91,6 +92,9 @@ def _parse_json_ld_item(item: dict, marker: dict | None) -> ListingData:
     address = inner.get("address", {}) or {}
     address_raw = address.get("streetAddress")
     neighborhood_raw = address.get("addressLocality")
+    extracted_neighborhood = extract_neighborhood_from_title(title)
+    if extracted_neighborhood and (not neighborhood_raw or neighborhood_raw.strip().lower() == "madrid"):
+        neighborhood_raw = extracted_neighborhood
     district_raw = None
     price_eur = None
     lat = None
@@ -333,6 +337,19 @@ class SpotahomeScraper(BaseScraper):
         try:
             resp = self._get(partial.url, retries=4, retry_backoff=3.0)
             full = _parse_detail_page(resp.text, partial)
+            from mrf.db.session import SessionLocal
+            db = SessionLocal()
+            try:
+                full.neighborhood_raw, neighborhood_id, district_id = apply_title_neighborhood_fallback(
+                    db,
+                    title=full.title,
+                    neighborhood_raw=full.neighborhood_raw,
+                    district_id=None,
+                )
+                if neighborhood_id:
+                    full.raw = {**(full.raw or {}), "matched_neighborhood_id": neighborhood_id, "matched_district_id": district_id}
+            finally:
+                db.close()
             if not full.description and not full.size_m2 and not full.neighborhood_raw:
                 raise ParseError(f"Spotahome detail parse weak for {partial.url}")
             return full
