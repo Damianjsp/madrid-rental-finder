@@ -1,16 +1,14 @@
 """
-Habitaclia scraper — httpx + selectolax SSR parsing.
+Habitaclia scraper — Cloudflare Browser Rendering + selectolax parsing.
 
 Run: python -m mrf.scrapers.habitaclia
 
-NOTE: Habitaclia uses Imperva bot protection. Direct scraping from a server IP
-will return a bot-detection page. The scraper code is correct for the page structure
-once you have a valid session.
+Habitaclia uses Imperva bot protection. This scraper uses Cloudflare Browser
+Rendering (``/content`` endpoint) to fetch pages through headless Chrome.
+If CF credentials are not set, it falls back to direct httpx with session cookies.
 
 URL pattern: https://www.habitaclia.com/alquiler-pisos-madrid.htm
              https://www.habitaclia.com/alquiler-pisos-madrid-{N}.htm
-
-To use: set HABITACLIA_COOKIE env var with cookies from a browser session.
 """
 
 import logging
@@ -21,6 +19,7 @@ from typing import Iterator
 from selectolax.parser import HTMLParser
 
 from mrf.scrapers.base import BaseScraper, ListingData, ScraperError
+from mrf.scrapers.cf_browser import cf_fetch_html, _is_configured as _cf_available
 
 log = logging.getLogger("mrf.scrapers.habitaclia")
 
@@ -162,6 +161,26 @@ def _parse_detail(html: str, partial: ListingData) -> ListingData:
     return partial
 
 
+def _fetch_page_html(url: str, client=None) -> str:
+    """Fetch HTML via Cloudflare Browser Rendering, falling back to httpx."""
+    if _cf_available():
+        html = cf_fetch_html(url)
+        if html:
+            return html
+    # Fallback to direct httpx
+    if client is None:
+        raise ScraperError(f"No CF credentials and no httpx client for {url}")
+    resp = client.get(url, timeout=30, follow_redirects=True)
+    # Detect bot protection
+    if "bot" in resp.text[:3000].lower() or "imperva" in resp.text[:3000].lower():
+        raise ScraperError(
+            "Imperva bot protection. Set CF_ACCOUNT_ID + CF_API_TOKEN, "
+            "or HABITACLIA_COOKIE env var."
+        )
+    resp.raise_for_status()
+    return resp.text
+
+
 class HabitacliaScraper(BaseScraper):
     portal_key = "habitaclia"
     rate_min = 6.0
@@ -185,13 +204,17 @@ class HabitacliaScraper(BaseScraper):
         )
 
     def list_pages(self) -> Iterator[list[ListingData]]:
-        cookie_str = os.environ.get("HABITACLIA_COOKIE", "")
-        if not cookie_str:
-            log.warning(
-                "[habitaclia] No HABITACLIA_COOKIE env var. "
-                "Habitaclia uses Imperva bot protection. "
-                "Set HABITACLIA_COOKIE=<cookie-value> from a browser session."
-            )
+        use_cf = _cf_available()
+        if not use_cf:
+            cookie_str = os.environ.get("HABITACLIA_COOKIE", "")
+            if not cookie_str:
+                log.warning(
+                    "[habitaclia] No CF credentials and no HABITACLIA_COOKIE. "
+                    "Set CF_ACCOUNT_ID + CF_API_TOKEN for Cloudflare Browser Rendering, "
+                    "or HABITACLIA_COOKIE from a browser session."
+                )
+        else:
+            log.info("[habitaclia] Using Cloudflare Browser Rendering for page fetches")
 
         for page in range(1, MAX_PAGES + 1):
             url = (
@@ -202,20 +225,12 @@ class HabitacliaScraper(BaseScraper):
             log.info(f"[habitaclia] Fetching page {page}: {url}")
 
             try:
-                resp = self._get(url)
+                html = _fetch_page_html(url, client=self._client)
             except Exception as e:
                 log.error(f"[habitaclia] Page {page} failed: {e}")
                 break
 
-            # Detect bot protection page
-            if "bot" in resp.text[:3000].lower() or "imperva" in resp.text[:3000].lower():
-                log.error(
-                    "[habitaclia] Bot protection detected. "
-                    "Set HABITACLIA_COOKIE from a browser session and retry."
-                )
-                raise ScraperError("Imperva bot protection. Set HABITACLIA_COOKIE env var.")
-
-            tree = HTMLParser(resp.text)
+            tree = HTMLParser(html)
             cards = (
                 tree.css("article[class*='list-item']")
                 or tree.css("li[class*='list-item']")
@@ -248,8 +263,8 @@ class HabitacliaScraper(BaseScraper):
         if partial.description and partial.price_eur:
             return partial
         try:
-            resp = self._get(partial.url)
-            return _parse_detail(resp.text, partial)
+            html = _fetch_page_html(partial.url, client=self._client)
+            return _parse_detail(html, partial)
         except Exception as e:
             log.debug(f"[habitaclia] Detail skip {partial.url}: {e}")
             return partial

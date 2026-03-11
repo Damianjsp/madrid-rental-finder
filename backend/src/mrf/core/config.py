@@ -1,5 +1,7 @@
 """Application configuration via environment variables."""
 
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +17,10 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://192.168.79.42"])
     log_level: str = "INFO"
     api_port: int = 8000
+
+    # Cloudflare Browser Rendering (optional — for yaencontre/habitaclia)
+    cf_account_id: Optional[str] = None
+    cf_api_token: Optional[str] = None
 
 
 settings = Settings()

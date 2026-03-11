@@ -1,17 +1,13 @@
 """
-Yaencontre scraper — httpx + selectolax SSR parsing.
+Yaencontre scraper — Cloudflare Browser Rendering + selectolax parsing.
 
 Run: python -m mrf.scrapers.yaencontre
 
-NOTE: Yaencontre uses DataDome bot protection. Direct scraping from a server
-IP will likely return 403. The scraper code is correct for the page structure;
-it will work from a residential IP or with session cookies established from a
-real browser session.
+Yaencontre uses DataDome bot protection. This scraper uses Cloudflare Browser
+Rendering (``/content`` endpoint) to fetch pages through headless Chrome.
+If CF credentials are not set, it falls back to direct httpx with session cookies.
 
 URL pattern: https://www.yaencontre.com/alquiler/pisos/madrid?page=N
-
-To use: set the YAENCONTRE_COOKIE env var with a valid session cookie from
-your browser (copy from Developer Tools → Network → Request Headers).
 """
 
 import logging
@@ -22,6 +18,7 @@ from typing import Iterator
 from selectolax.parser import HTMLParser
 
 from mrf.scrapers.base import BaseScraper, ListingData, ScraperError
+from mrf.scrapers.cf_browser import cf_fetch_html, _is_configured as _cf_available
 
 log = logging.getLogger("mrf.scrapers.yaencontre")
 
@@ -158,6 +155,25 @@ def _parse_detail(html: str, partial: ListingData) -> ListingData:
     return partial
 
 
+def _fetch_page_html(url: str, client=None) -> str:
+    """Fetch HTML via Cloudflare Browser Rendering, falling back to httpx."""
+    if _cf_available():
+        html = cf_fetch_html(url)
+        if html:
+            return html
+    # Fallback to direct httpx
+    if client is None:
+        raise ScraperError(f"No CF credentials and no httpx client for {url}")
+    resp = client.get(url, timeout=30, follow_redirects=True)
+    if resp.status_code == 403:
+        raise ScraperError(
+            "403: DataDome protection. Set CF_ACCOUNT_ID + CF_API_TOKEN, "
+            "or YAENCONTRE_COOKIE env var."
+        )
+    resp.raise_for_status()
+    return resp.text
+
+
 class YaencontreScraper(BaseScraper):
     portal_key = "yaencontre"
     rate_min = 6.0
@@ -165,7 +181,6 @@ class YaencontreScraper(BaseScraper):
 
     def _build_client(self):
         import httpx
-        # Use env cookie if provided (set from browser session)
         cookie_str = os.environ.get("YAENCONTRE_COOKIE", "")
         headers = {
             "User-Agent": self._ua,
@@ -182,32 +197,29 @@ class YaencontreScraper(BaseScraper):
         )
 
     def list_pages(self) -> Iterator[list[ListingData]]:
-        cookie_str = os.environ.get("YAENCONTRE_COOKIE", "")
-        if not cookie_str:
-            log.warning(
-                "[yaencontre] No YAENCONTRE_COOKIE env var set. "
-                "Yaencontre uses DataDome bot protection. "
-                "Set YAENCONTRE_COOKIE=<cookie-value> from a browser session to scrape."
-            )
+        use_cf = _cf_available()
+        if not use_cf:
+            cookie_str = os.environ.get("YAENCONTRE_COOKIE", "")
+            if not cookie_str:
+                log.warning(
+                    "[yaencontre] No CF credentials and no YAENCONTRE_COOKIE. "
+                    "Set CF_ACCOUNT_ID + CF_API_TOKEN for Cloudflare Browser Rendering, "
+                    "or YAENCONTRE_COOKIE from a browser session."
+                )
+        else:
+            log.info("[yaencontre] Using Cloudflare Browser Rendering for page fetches")
 
         for page in range(1, MAX_PAGES + 1):
             url = f"{SEARCH_URL}?page={page}" if page > 1 else SEARCH_URL
             log.info(f"[yaencontre] Fetching page {page}: {url}")
 
             try:
-                resp = self._get(url)
+                html = _fetch_page_html(url, client=self._client)
             except Exception as e:
                 log.error(f"[yaencontre] Page {page} failed: {e}")
                 break
 
-            if resp.status_code == 403:
-                log.error(
-                    "[yaencontre] 403 Forbidden — DataDome bot protection active. "
-                    "Set YAENCONTRE_COOKIE from a browser session and retry."
-                )
-                raise ScraperError("403: DataDome protection. Set YAENCONTRE_COOKIE env var.")
-
-            tree = HTMLParser(resp.text)
+            tree = HTMLParser(html)
             cards = (
                 tree.css("[class*='listing-card']")
                 or tree.css("[class*='property-card']")
@@ -239,8 +251,8 @@ class YaencontreScraper(BaseScraper):
         if partial.description and partial.price_eur:
             return partial
         try:
-            resp = self._get(partial.url)
-            return _parse_detail(resp.text, partial)
+            html = _fetch_page_html(partial.url, client=self._client)
+            return _parse_detail(html, partial)
         except Exception as e:
             log.debug(f"[yaencontre] Detail skip {partial.url}: {e}")
             return partial

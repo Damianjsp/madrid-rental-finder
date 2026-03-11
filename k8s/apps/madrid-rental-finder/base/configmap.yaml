@@ -24,5 +24,9 @@ data:
   MRF_DB_PORT: "5432"
   MRF_DB_NAME: "madrid_rental_finder"
 
+  # Cloudflare Browser Rendering (account ID is non-sensitive)
+  # CF_API_TOKEN must be added to the mrf-db-credentials Secret
+  CF_ACCOUNT_ID: ""
+
   # Reconciliation settings
   MRF_INACTIVE_TTL_DAYS: "7"

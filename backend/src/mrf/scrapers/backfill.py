@@ -4,8 +4,11 @@ Backfill missing detail data for existing listings.
 Usage:
     python -m mrf.scrapers.backfill [--portal spotahome|pisos|enalquiler] [--limit 100] [--dry-run]
 
-Queries listings missing description OR size_m2, fetches their detail pages,
-and updates the DB. Respects rate limits.
+Queries listings missing description OR size_m2 OR furnished OR neighborhood,
+fetches their detail pages, and updates the DB.  Always attempts the fetch and
+applies any non-None enriched value to a NULL/empty DB field.  Listings that
+yield zero new data are marked with ``raw.backfill_attempted = true`` so they
+won't be retried forever.
 """
 
 import argparse
@@ -70,10 +73,33 @@ UPDATE_FIELDS = (
 )
 
 
+def _is_empty(val) -> bool:
+    """Return True when a DB value counts as 'missing'."""
+    if val is None:
+        return True
+    if isinstance(val, str) and not val.strip():
+        return True
+    return False
+
+
+def _is_stale_neighborhood(val) -> bool:
+    return isinstance(val, str) and val.strip().lower() == "madrid"
+
+
 def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = False):
     """Backfill listings missing key detail fields."""
     with get_db() as db:
         query = db.query(Listing).filter(Listing.is_active.is_(True))
+
+        # Exclude listings already marked as backfill-attempted with no new data
+        query = query.filter(
+            or_(
+                Listing.raw["backfill_attempted"].as_boolean().is_(None),
+                Listing.raw["backfill_attempted"].as_boolean().is_(False),
+                ~Listing.raw.has_key("backfill_attempted"),  # noqa: W601 — SQLAlchemy JSON op
+            )
+        )
+
         query = query.filter(
             or_(
                 Listing.description.is_(None),
@@ -105,7 +131,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
              "property_type": l.property_type, "furnished": l.furnished,
              "address_raw": l.address_raw, "neighborhood_raw": l.neighborhood_raw,
              "district_raw": l.district_raw, "municipality_raw": l.municipality_raw,
-             "lat": l.lat, "lon": l.lon}
+             "lat": l.lat, "lon": l.lon, "raw": dict(l.raw) if l.raw else {}}
             for l in listings
         ]
 
@@ -114,7 +140,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
         portals = {p.id: p.key for p in db.query(Portal).filter(Portal.id.in_(portal_ids)).all()}
 
     # Process each portal group
-    stats = {"total": 0, "updated": 0, "failed": 0, "skipped": 0}
+    stats = {"total": 0, "updated": 0, "failed": 0, "skipped": 0, "marked_done": 0}
 
     for pid, pkey in portals.items():
         if pkey not in PORTAL_MAP:
@@ -142,6 +168,13 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                     timeout=30,
                     follow_redirects=True,
                 )
+                if resp.status_code == 404:
+                    log.info("[%s] %s returned 404 — marking backfill_attempted", pkey, listing["url"])
+                    if not dry_run:
+                        _mark_backfill_attempted(listing["id"], listing["raw"])
+                    stats["marked_done"] += 1
+                    continue
+
                 if resp.status_code != 200:
                     log.warning("[%s] %s returned %s", pkey, listing["url"], resp.status_code)
                     stats["failed"] += 1
@@ -159,7 +192,7 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                     )
                     continue
 
-                # Apply updates to DB
+                # Apply updates to DB — fill any NULL/empty field with enriched data
                 with get_db() as db:
                     db_listing = db.get(Listing, listing["id"])
                     if not db_listing:
@@ -170,12 +203,21 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                     for field in UPDATE_FIELDS:
                         new_val = getattr(enriched, field)
                         old_val = getattr(db_listing, field)
-                        # Only update if new is non-None and old is None/empty
-                        if new_val is not None and (old_val is None or (isinstance(old_val, str) and not old_val.strip())):
-                            setattr(db_listing, field, new_val)
-                            changed = True
-                        # Special: update neighborhood_raw if it was just "Madrid"
-                        if field == "neighborhood_raw" and old_val == "Madrid" and new_val and new_val.strip().lower() != "madrid":
+
+                        should_update = False
+
+                        # Fill NULL/empty fields with any non-None enriched value
+                        if new_val is not None and _is_empty(old_val):
+                            should_update = True
+
+                        # Special: overwrite stale 'Madrid' neighborhood
+                        if (field == "neighborhood_raw"
+                                and _is_stale_neighborhood(old_val)
+                                and new_val
+                                and not _is_stale_neighborhood(new_val)):
+                            should_update = True
+
+                        if should_update:
                             setattr(db_listing, field, new_val)
                             changed = True
 
@@ -185,7 +227,10 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
                         stats["updated"] += 1
                         log.info("[%s] Updated %s/%s: %s", pkey, i, len(portal_listings), listing["url"])
                     else:
-                        stats["skipped"] += 1
+                        # Detail page returned nothing new — mark to avoid infinite retry
+                        _mark_backfill_attempted(listing["id"], dict(db_listing.raw) if db_listing.raw else {})
+                        stats["marked_done"] += 1
+                        log.debug("[%s] No new data for %s — marked backfill_attempted", pkey, listing["url"])
 
             except Exception as e:
                 log.warning("[%s] Backfill failed for %s: %s", pkey, listing["url"], e)
@@ -195,9 +240,19 @@ def backfill(portal_key: str | None = None, limit: int = 200, dry_run: bool = Fa
             scraper._client.close()
 
     log.info(
-        "Backfill complete: total=%s updated=%s failed=%s skipped=%s",
-        stats["total"], stats["updated"], stats["failed"], stats["skipped"],
+        "Backfill complete: total=%s updated=%s failed=%s skipped=%s marked_done=%s",
+        stats["total"], stats["updated"], stats["failed"], stats["skipped"], stats["marked_done"],
     )
+
+
+def _mark_backfill_attempted(listing_id: int, existing_raw: dict):
+    """Set raw.backfill_attempted = true so the listing is excluded from future runs."""
+    with get_db() as db:
+        db_listing = db.get(Listing, listing_id)
+        if db_listing:
+            new_raw = {**(existing_raw or {}), "backfill_attempted": True}
+            db_listing.raw = new_raw
+            db.flush()
 
 
 def main():

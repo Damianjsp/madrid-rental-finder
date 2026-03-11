@@ -52,6 +52,17 @@ spec:
                     configMapKeyRef:
                       name: mrf-config
                       key: MRF_HABITACLIA_BASE_URL
+                - name: CF_ACCOUNT_ID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: mrf-config
+                      key: CF_ACCOUNT_ID
+                - name: CF_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: mrf-db-credentials
+                      key: CF_API_TOKEN
+                      optional: true
               resources:
                 requests:
                   cpu: 100m
