@@ -61,10 +61,10 @@ function AppInner() {
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Mock badge */}
+          {/* Live data indicator */}
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-amber-900/50 text-amber-400 border border-amber-800 px-2 py-0.5 rounded">
-              MOCK DATA
+            <span className="text-xs bg-emerald-900/50 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">
+              LIVE
             </span>
           </div>
         </div>
