@@ -8,7 +8,7 @@ import {
 } from '../mocks/data'
 
 // Toggle: set to false when real API is available
-const USE_MOCK = true
+const USE_MOCK = false
 
 async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(path)
