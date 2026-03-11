@@ -1,5 +1,5 @@
 """
-Pisos.com scraper — httpx + selectolax SSR parsing.
+Pisos.com scraper — httpx + selectolax SSR parsing with robust detail extraction.
 
 Run: python -m mrf.scrapers.pisos
 
@@ -31,47 +31,33 @@ def _clean(text: str | None) -> str | None:
 def _parse_price(text: str | None) -> int | None:
     if not text:
         return None
-    # Remove dots used as thousands separators in Spanish
-    text = text.replace(".", "")
+    text = text.replace(".", "").replace(",", "")
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else None
 
 
-def _parse_int(text: str | None) -> int | None:
-    if not text:
+def _safe_int(val) -> int | None:
+    try:
+        return int(val) if val is not None else None
+    except (TypeError, ValueError):
         return None
-    m = re.search(r"\d+", text)
-    return int(m.group()) if m else None
 
 
-def _parse_float(text: str | None) -> float | None:
-    if not text:
+def _safe_float(val) -> float | None:
+    try:
+        return float(val) if val is not None else None
+    except (TypeError, ValueError):
         return None
-    t = text.replace(",", ".")
-    m = re.search(r"([\d.]+)", t)
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            pass
-    return None
 
 
 def _parse_card(node) -> ListingData | None:
-    """
-    Parse a div.ad-preview card.
-    The id attribute IS the listing ID.
-    The data-lnk-href attribute has the URL path.
-    """
     lid = node.attributes.get("id", "")
     if not lid:
         return None
-    # Normalize: pisos uses dots in id like "61749366628.109300" → "61749366628_109300"
     lid_normalized = lid.replace(".", "_")
 
     href = node.attributes.get("data-lnk-href", "")
     if not href:
-        # Try link
         link = node.css_first("a[href*='/alquilar/']") or node.css_first("a[href]")
         if link:
             href = link.attributes.get("href", "")
@@ -80,7 +66,7 @@ def _parse_card(node) -> ListingData | None:
     if not href:
         return None
 
-    # Price — look for span/div with price text
+    # Price
     price = None
     for el in node.css("[class*='price'], [class*='Price']"):
         t = el.text(strip=True)
@@ -89,13 +75,12 @@ def _parse_card(node) -> ListingData | None:
             if p and 100 <= p <= 100000:
                 price = p
                 break
+    if not price:
+        price_attr_node = node.css_first("[data-ad-price]")
+        if price_attr_node:
+            price = _safe_int(price_attr_node.attributes.get("data-ad-price"))
 
-    # Also try data-ad-price attribute nearby
-    price_attr_node = node.css_first("[data-ad-price]")
-    if not price and price_attr_node:
-        price = _safe_int(price_attr_node.attributes.get("data-ad-price"))
-
-    # Title — first meaningful link text or h2
+    # Title
     title = None
     title_node = (
         node.css_first("h2.ad-preview__title")
@@ -107,7 +92,7 @@ def _parse_card(node) -> ListingData | None:
     if title_node:
         title = _clean(title_node.text(strip=True))
 
-    # Location — pisos.com shows "Barrio (Distrito X. Madrid Capital)"
+    # Location — "Barrio (Distrito X. Madrid Capital)"
     location_node = (
         node.css_first("[class*='subtitle']")
         or node.css_first("[class*='location']")
@@ -118,7 +103,6 @@ def _parse_card(node) -> ListingData | None:
     neighborhood_raw = None
     district_raw = None
     if location_text:
-        # Format: "Portazgo (Distrito Puente de Vallecas. Madrid Capital)"
         m = re.match(r"^(.+?)\s*\(Distrito\s+(.+?)\.", location_text, re.I)
         if m:
             neighborhood_raw = m.group(1).strip()
@@ -132,11 +116,10 @@ def _parse_card(node) -> ListingData | None:
             elif parts:
                 district_raw = parts[0]
 
-    # Features — bedrooms, bathrooms, size
+    # Features
     bedrooms = None
     bathrooms = None
     size_m2 = None
-
     all_text = node.text(strip=True)
     m_bed = re.search(r"(\d+)\s*(?:hab(?:itaci[oó]n)?|dorm)", all_text, re.I)
     if m_bed:
@@ -151,11 +134,10 @@ def _parse_card(node) -> ListingData | None:
         except ValueError:
             pass
 
-    # Images — pisos uses img inside carousel
+    # Images
     images = []
     for img in node.css("img[src], source[srcset]"):
         src = img.attributes.get("src") or img.attributes.get("srcset", "")
-        # srcset may have multiple sizes; take first URL
         if src and "," in src:
             src = src.split(",")[0].strip().split(" ")[0]
         if src and src.startswith("http") and "placeholder" not in src.lower():
@@ -163,7 +145,7 @@ def _parse_card(node) -> ListingData | None:
         if len(images) >= 5:
             break
 
-    # Property type from title
+    # Property type
     property_type = "piso"
     if title:
         t_lower = title.lower()
@@ -175,6 +157,8 @@ def _parse_card(node) -> ListingData | None:
             property_type = "chalet"
         elif "dúplex" in t_lower or "duplex" in t_lower:
             property_type = "duplex"
+        elif "ático" in t_lower or "atico" in t_lower:
+            property_type = "atico"
 
     return ListingData(
         source_listing_id=lid_normalized,
@@ -193,34 +177,96 @@ def _parse_card(node) -> ListingData | None:
     )
 
 
-def _safe_int(val) -> int | None:
-    try:
-        return int(val) if val is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
 def _parse_detail(html: str, partial: ListingData) -> ListingData:
+    """Extract all available fields from a pisos.com detail page."""
     tree = HTMLParser(html)
+    lowered = html.lower()
 
-    desc_node = (
-        tree.css_first("[class*='description']")
-        or tree.css_first("[id='description']")
-        or tree.css_first("div.ad-detail__description")
-        or tree.css_first("section[class*='description']")
-    )
-    if desc_node:
-        description = _clean(desc_node.text(strip=True))
-        if description and len(description) > 2000:
-            description = description[:2000]
-        partial.description = description
+    # ---- Description ----
+    if not partial.description:
+        desc_node = (
+            tree.css_first("div.description")
+            or tree.css_first("[class*='description']")
+            or tree.css_first("[id='description']")
+            or tree.css_first("div.ad-detail__description")
+        )
+        if desc_node:
+            partial.description = _clean(desc_node.text(strip=True))
+        if not partial.description:
+            meta = re.search(
+                r'<meta[^>]+name="description"[^>]+content="([^"]+)"', html, re.I
+            )
+            if meta:
+                partial.description = _clean(meta.group(1))
+    if partial.description and len(partial.description) > 2000:
+        partial.description = partial.description[:2000]
 
+    # ---- Features section: size, bedrooms, bathrooms ----
+    features_nodes = tree.css("div.features__feature")
+    for feat in features_nodes:
+        label_node = feat.css_first(".features__label")
+        value_node = feat.css_first(".features__value")
+        if not label_node:
+            continue
+        label = _clean(label_node.text(strip=True)) or ""
+        value = _clean(value_node.text(strip=True)) if value_node else ""
+        label_lc = label.lower()
+
+        if "superficie construida" in label_lc or "superficie útil" in label_lc:
+            if partial.size_m2 is None:
+                m = re.search(r"([\d.,]+)", value or "")
+                if m:
+                    partial.size_m2 = _safe_float(m.group(1).replace(",", "."))
+        elif "habitaci" in label_lc or "dormitorio" in label_lc:
+            if partial.bedrooms is None:
+                partial.bedrooms = _safe_int(re.sub(r"[^\d]", "", value or ""))
+        elif "baño" in label_lc:
+            if partial.bathrooms is None:
+                partial.bathrooms = _safe_int(re.sub(r"[^\d]", "", value or ""))
+
+    # ---- Furnished ----
+    if partial.furnished is None:
+        if re.search(r'\bamueblado\b', lowered):
+            partial.furnished = True
+        elif re.search(r'sin amueblar|no amueblado', lowered):
+            partial.furnished = False
+
+    # ---- Elevator ----
+    if partial.elevator is None:
+        if re.search(r'ascensor', lowered):
+            partial.elevator = True
+
+    # ---- Coordinates from map data ----
+    if partial.lat is None or partial.lon is None:
+        m = re.search(r'latitude=([-\d.]+).*?longitude=([-\d.]+)', html)
+        if m:
+            partial.lat = _safe_float(m.group(1))
+            partial.lon = _safe_float(m.group(2))
+
+    # ---- Address / location ----
+    if not partial.address_raw:
+        # Try h1 which often has "Piso en alquiler en Barrio" or breadcrumb
+        h1 = tree.css_first("h1")
+        if h1:
+            partial.address_raw = _clean(h1.text(strip=True))
+
+    # ---- Neighborhood / district from breadcrumb ----
+    if not partial.neighborhood_raw or not partial.district_raw:
+        for bc in tree.css("nav.breadcrumb a, [class*='breadcrumb'] a"):
+            txt = _clean(bc.text(strip=True))
+            if txt and txt.lower() not in {"inicio", "pisos.com", "alquiler"}:
+                if not partial.district_raw:
+                    partial.district_raw = txt
+                elif not partial.neighborhood_raw:
+                    partial.neighborhood_raw = txt
+
+    # ---- Images ----
     images = list(partial.images)
     for img in tree.css("img[src]"):
         src = img.attributes.get("src", "")
         if src.startswith("http") and src not in images and "placeholder" not in src.lower():
             images.append(src)
-        if len(images) >= 10:
+        if len(images) >= 12:
             break
     partial.images = images
 
@@ -235,19 +281,17 @@ class PisosScraper(BaseScraper):
     def list_pages(self) -> Iterator[list[ListingData]]:
         for page in range(1, MAX_PAGES + 1):
             url = f"{SEARCH_URL}?numpagina={page}" if page > 1 else SEARCH_URL
-            log.info(f"[pisos] Fetching page {page}: {url}")
-
+            log.info("[pisos] Fetching page %s: %s", page, url)
             try:
                 resp = self._get(url)
             except Exception as e:
-                log.error(f"[pisos] Page {page} failed: {e}")
+                log.error("[pisos] Page %s failed: %s", page, e)
                 break
 
             tree = HTMLParser(resp.text)
             cards = tree.css("div.ad-preview")
-
             if not cards:
-                log.info(f"[pisos] No cards on page {page} — stopping")
+                log.info("[pisos] No cards on page %s — stopping", page)
                 break
 
             listings = []
@@ -257,16 +301,15 @@ class PisosScraper(BaseScraper):
                     if data and data.source_listing_id:
                         listings.append(data)
                 except Exception as e:
-                    log.debug(f"[pisos] Card parse error: {e}")
+                    log.debug("[pisos] Card parse error: %s", e)
 
             if not listings:
-                log.info(f"[pisos] No listings parsed on page {page} — stopping")
+                log.info("[pisos] No listings parsed on page %s — stopping", page)
                 break
 
-            log.info(f"[pisos] Page {page}: {len(listings)} listings")
+            log.info("[pisos] Page %s: %s listings", page, len(listings))
             yield listings
 
-            # Check for next page
             pagination = tree.css_first("[class*='pagination']") or tree.css_first("nav[aria-label]")
             if pagination:
                 next_btn = (
@@ -275,18 +318,16 @@ class PisosScraper(BaseScraper):
                     or pagination.css_first("[class*='siguiente']")
                 )
                 if not next_btn:
-                    log.info(f"[pisos] No next page after page {page}")
+                    log.info("[pisos] No next page after page %s", page)
                     break
 
     def fetch_detail(self, partial: ListingData) -> ListingData:
-        # Pisos.com cards already have price, bedrooms, size — skip detail
-        if partial.price_eur and partial.bedrooms:
-            return partial
+        """Always fetch detail — description, coords, furnished are only on detail page."""
         try:
-            resp = self._get(partial.url)
+            resp = self._get(partial.url, retries=3, retry_backoff=2.0)
             return _parse_detail(resp.text, partial)
         except Exception as e:
-            log.debug(f"[pisos] Detail skip {partial.url}: {e}")
+            log.warning("[pisos] Detail fetch failed for %s: %s", partial.url, e)
             return partial
 
 
@@ -297,7 +338,7 @@ def main():
     )
     scraper = PisosScraper()
     stats = scraper.run()
-    log.info(f"Done: {stats}")
+    log.info("Done: %s", stats)
 
 
 if __name__ == "__main__":

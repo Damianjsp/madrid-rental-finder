@@ -1,5 +1,5 @@
 """
-Enalquiler scraper — httpx + selectolax SSR parsing.
+Enalquiler scraper — httpx + selectolax SSR parsing with robust detail extraction.
 
 Run: python -m mrf.scrapers.enalquiler
 
@@ -23,23 +23,29 @@ log = logging.getLogger("mrf.scrapers.enalquiler")
 BASE_URL = "https://www.enalquiler.com"
 SEARCH_URL_PAGE1 = f"{BASE_URL}/alquiler-pisos-madrid-30-2-0-27745.html"
 SEARCH_URL_PAGN = f"{BASE_URL}/alquiler-pisos-madrid_30_27745_2/{{page}}/"
-MAX_PAGES = 250  # ~3750 listings at 15/page
+MAX_PAGES = 250
 
 
 def _clean(text: str | None) -> str | None:
     if not text:
         return None
+    text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text).strip() or None
 
 
 def _parse_price(text: str | None) -> int | None:
     if not text:
         return None
-    # Remove dots and euro sign, handle "2.300€" → 2300
     text = text.replace(".", "").replace(",", "")
-    # Remove euro symbol (could be unicode \x80 in some encodings)
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else None
+
+
+def _safe_float(val) -> float | None:
+    try:
+        return float(val) if val is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_card(node) -> ListingData | None:
@@ -51,7 +57,6 @@ def _parse_card(node) -> ListingData | None:
     if not lid:
         return None
 
-    # Link
     link_node = node.css_first("a[href]")
     if not link_node:
         return None
@@ -61,7 +66,7 @@ def _parse_card(node) -> ListingData | None:
     if href.startswith("/"):
         href = BASE_URL + href
 
-    # Price — propertyCard__price--value
+    # Price
     price_node = (
         node.css_first("[class*='price--value']")
         or node.css_first("[class*='price']")
@@ -77,10 +82,9 @@ def _parse_card(node) -> ListingData | None:
     )
     title = _clean(title_node.text(strip=True) if title_node else None)
     if not title:
-        # Use link text as fallback
         title = _clean(link_node.text(strip=True))
 
-    # Location — "Barrio, Distrito, Madrid"
+    # Location
     location_node = (
         node.css_first("[class*='location']")
         or node.css_first("[class*='address']")
@@ -102,13 +106,12 @@ def _parse_card(node) -> ListingData | None:
         elif parts:
             district_raw = parts[0]
 
-    # Features from card text
+    # Features
     all_text = node.text(strip=True)
     bedrooms = None
     bathrooms = None
     size_m2 = None
 
-    # Use structured feature spans if available
     for el in node.css("span, li, strong"):
         t = el.text(strip=True)
         if not bedrooms:
@@ -127,7 +130,6 @@ def _parse_card(node) -> ListingData | None:
                 except ValueError:
                     pass
 
-    # Fallback: regex on full text with word boundaries
     if not bedrooms:
         m_bed = re.search(r"(\d+)\s+(?:hab(?:itaci[oó]n)?|dorm|Hab)\b", all_text, re.I)
         if m_bed:
@@ -155,7 +157,7 @@ def _parse_card(node) -> ListingData | None:
     elif "ático" in all_lower or "atico" in all_lower:
         property_type = "atico"
 
-    # Images from carousel
+    # Images
     images = []
     carousel = node.css_first("[class*='carousel']")
     if carousel:
@@ -167,7 +169,6 @@ def _parse_card(node) -> ListingData | None:
                 images.append(src)
             if len(images) >= 5:
                 break
-    # Also try images-path attribute for template URL
     images_path = node.attributes.get("images-path")
     if not images and images_path:
         img_url = images_path.replace("{width}", "zm")
@@ -191,25 +192,84 @@ def _parse_card(node) -> ListingData | None:
 
 
 def _parse_detail(html: str, partial: ListingData) -> ListingData:
+    """Extract rich data from enalquiler detail page."""
     tree = HTMLParser(html)
+    lowered = html.lower()
 
-    desc_node = (
-        tree.css_first("[class*='description']")
-        or tree.css_first("[id*='description']")
-        or tree.css_first("[itemprop='description']")
-    )
-    if desc_node:
-        description = _clean(desc_node.text(strip=True))
-        if description and len(description) > 2000:
-            description = description[:2000]
-        partial.description = description
+    # ---- Description ----
+    if not partial.description:
+        desc_node = (
+            tree.css_first("[class*='description']")
+            or tree.css_first("[id*='description']")
+            or tree.css_first("[itemprop='description']")
+        )
+        if desc_node:
+            partial.description = _clean(desc_node.text(strip=True))
+        if not partial.description:
+            meta = re.search(
+                r'<meta[^>]+name="description"[^>]+content="([^"]+)"', html, re.I
+            )
+            if meta:
+                partial.description = _clean(meta.group(1))
+    if partial.description and len(partial.description) > 2000:
+        partial.description = partial.description[:2000]
 
+    # ---- Address from <address> block ----
+    address_node = tree.css_first("address")
+    if address_node:
+        for div in address_node.css("div"):
+            txt = _clean(div.text(strip=True))
+            if not txt:
+                continue
+            if "barrio:" in txt.lower():
+                val = re.sub(r"^barrio:\s*", "", txt, flags=re.I).strip()
+                if val:
+                    partial.neighborhood_raw = partial.neighborhood_raw or val
+            elif "distrito" in txt.lower() or "zona" in txt.lower():
+                val = re.sub(r"^distrito/zona:\s*|^distrito:\s*|^zona:\s*", "", txt, flags=re.I).strip()
+                if val:
+                    partial.district_raw = partial.district_raw or val
+            elif "población:" in txt.lower():
+                val = re.sub(r"^poblaci[oó]n:\s*", "", txt, flags=re.I).strip()
+                if val and not partial.address_raw:
+                    partial.address_raw = val
+
+    # ---- Coordinates from map ----
+    if partial.lat is None or partial.lon is None:
+        m = re.search(r'map-latitude="([-\d.]+)"', html)
+        if m:
+            partial.lat = _safe_float(m.group(1))
+        m = re.search(r'map-longitude=\s*"([-\d.]+)"', html)
+        if m:
+            partial.lon = _safe_float(m.group(1))
+
+    # ---- Furnished ----
+    if partial.furnished is None:
+        if re.search(r'\bamueblado\b', lowered):
+            partial.furnished = True
+        elif re.search(r'sin amueblar|no amueblado', lowered):
+            partial.furnished = False
+        elif re.search(r'\bmuebles\b.*\binclu', lowered):
+            partial.furnished = True
+
+    # ---- Size from detail page ----
+    if partial.size_m2 is None:
+        m = re.search(r"(\d+)\s*m(?:2|²)", html, re.I)
+        if m:
+            partial.size_m2 = _safe_float(m.group(1))
+
+    # ---- Elevator ----
+    if partial.elevator is None:
+        if re.search(r'\bascensor\b', lowered):
+            partial.elevator = True
+
+    # ---- Images ----
     images = list(partial.images)
     for img in tree.css("img[src]"):
         src = img.attributes.get("src", "")
-        if src.startswith("http") and "images.enalquiler.com" in src and src not in images:
+        if src.startswith("http") and "enalquiler" in src and src not in images:
             images.append(src)
-        if len(images) >= 10:
+        if len(images) >= 12:
             break
     partial.images = images
 
@@ -228,19 +288,17 @@ class EnalquilerScraper(BaseScraper):
                 if page == 1
                 else SEARCH_URL_PAGN.format(page=page)
             )
-            log.info(f"[enalquiler] Fetching page {page}: {url}")
-
+            log.info("[enalquiler] Fetching page %s: %s", page, url)
             try:
                 resp = self._get(url)
             except Exception as e:
-                log.error(f"[enalquiler] Page {page} failed: {e}")
+                log.error("[enalquiler] Page %s failed: %s", page, e)
                 break
 
             tree = HTMLParser(resp.text)
             cards = tree.css("li.propertyCard") or tree.css("[list-item]")
-
             if not cards:
-                log.info(f"[enalquiler] No cards on page {page} — stopping")
+                log.info("[enalquiler] No cards on page %s — stopping", page)
                 break
 
             listings = []
@@ -250,24 +308,22 @@ class EnalquilerScraper(BaseScraper):
                     if data and data.source_listing_id:
                         listings.append(data)
                 except Exception as e:
-                    log.debug(f"[enalquiler] Card parse error: {e}")
+                    log.debug("[enalquiler] Card parse error: %s", e)
 
             if not listings:
-                log.info(f"[enalquiler] Empty page {page} — stopping")
+                log.info("[enalquiler] Empty page %s — stopping", page)
                 break
 
-            log.info(f"[enalquiler] Page {page}: {len(listings)} listings")
+            log.info("[enalquiler] Page %s: %s listings", page, len(listings))
             yield listings
 
     def fetch_detail(self, partial: ListingData) -> ListingData:
-        # Enalquiler cards already have title+price+features
-        if partial.price_eur and partial.district_raw:
-            return partial
+        """Always fetch detail — address, coords, description are only on detail."""
         try:
-            resp = self._get(partial.url)
+            resp = self._get(partial.url, retries=3, retry_backoff=2.0)
             return _parse_detail(resp.text, partial)
         except Exception as e:
-            log.debug(f"[enalquiler] Detail skip {partial.url}: {e}")
+            log.warning("[enalquiler] Detail fetch failed for %s: %s", partial.url, e)
             return partial
 
 
@@ -278,7 +334,7 @@ def main():
     )
     scraper = EnalquilerScraper()
     stats = scraper.run()
-    log.info(f"Done: {stats}")
+    log.info("Done: %s", stats)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from collections import Counter
 from typing import Iterator, Optional
 
 import httpx
@@ -88,6 +89,7 @@ class BaseScraper(ABC):
         self._client: Optional[httpx.Client] = None
         self._portal_id: Optional[int] = None
         self._run_id: Optional[int] = None
+        self._quality_counts: Counter[str] = Counter()
 
     # ---- helpers ----
 
@@ -116,21 +118,35 @@ class BaseScraper(ABC):
             http2=False,
         )
 
-    def _get(self, url: str, **kwargs) -> httpx.Response:
-        delay = random.uniform(self.rate_min, self.rate_max)
-        log.debug("Sleeping %.1fs before %s", delay, url)
-        time.sleep(delay)
+    def _get(self, url: str, retries: int = 3, retry_backoff: float = 2.0, **kwargs) -> httpx.Response:
         assert self._client is not None
-        resp = self._client.get(url, **kwargs)
-        if resp.status_code == 429:
-            log.warning("429 from %s — backing off 60s", url)
-            time.sleep(60)
-            raise RateLimitError(f"429 from {url}")
-        if resp.status_code == 403:
-            log.error("403 from %s — stopping scraper", url)
-            raise ScraperError(f"403 Forbidden: {url}")
-        resp.raise_for_status()
-        return resp
+        last_error: Exception | None = None
+        for attempt in range(1, retries + 1):
+            delay = random.uniform(self.rate_min, self.rate_max)
+            log.debug("Sleeping %.1fs before %s (attempt %s/%s)", delay, url, attempt, retries)
+            time.sleep(delay)
+            try:
+                resp = self._client.get(url, **kwargs)
+                if resp.status_code == 429:
+                    wait_s = min(60, retry_backoff * attempt * 5)
+                    log.warning("429 from %s — backing off %.1fs (attempt %s/%s)", url, wait_s, attempt, retries)
+                    time.sleep(wait_s)
+                    raise RateLimitError(f"429 from {url}")
+                if resp.status_code == 403:
+                    log.error("403 from %s — stopping scraper", url)
+                    raise ScraperError(f"403 Forbidden: {url}")
+                resp.raise_for_status()
+                return resp
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError, RateLimitError) as e:
+                last_error = e
+                if attempt >= retries or isinstance(e, ScraperError) and not isinstance(e, RateLimitError):
+                    break
+                sleep_s = retry_backoff * attempt
+                log.warning("GET failed for %s (attempt %s/%s): %s — retrying in %.1fs", url, attempt, retries, e, sleep_s)
+                time.sleep(sleep_s)
+        if last_error:
+            raise last_error
+        raise ScraperError(f"GET failed for {url}")
 
     # ---- Portal / Run management ----
 
@@ -256,11 +272,56 @@ class BaseScraper(ABC):
         """Two-stage: fetch detail only for new listings or those missing key fields."""
         if existing is None:
             return True
-        # Re-fetch if key fields are still missing
-        return not all([
-            existing.description, existing.bedrooms,
-            existing.size_m2, existing.neighborhood_raw,
+        return any([
+            not existing.description,
+            existing.bedrooms is None,
+            existing.size_m2 is None,
+            not existing.neighborhood_raw,
+            existing.furnished is None,
+            not existing.address_raw,
+            existing.lat is None or existing.lon is None,
         ])
+
+    def _quality_score(self, data: ListingData) -> int:
+        checks = [
+            data.price_eur is not None,
+            data.bedrooms is not None,
+            data.size_m2 is not None,
+            bool(data.neighborhood_raw and data.neighborhood_raw.strip() and data.neighborhood_raw.strip().lower() != "madrid"),
+            bool(data.description and data.description.strip()),
+            data.furnished is not None,
+        ]
+        return int(sum(checks) / len(checks) * 100)
+
+    def _track_quality(self, data: ListingData):
+        self._quality_counts["total"] += 1
+        if data.price_eur is None:
+            self._quality_counts["missing_price"] += 1
+        if data.bedrooms is None:
+            self._quality_counts["missing_bedrooms"] += 1
+        if data.size_m2 is None:
+            self._quality_counts["missing_size_m2"] += 1
+        if not data.neighborhood_raw or data.neighborhood_raw.strip().lower() == "madrid":
+            self._quality_counts["missing_neighborhood"] += 1
+        if not data.description:
+            self._quality_counts["missing_description"] += 1
+        if data.furnished is None:
+            self._quality_counts["missing_furnished"] += 1
+        if self._quality_score(data) >= 80:
+            self._quality_counts["complete"] += 1
+
+    def _log_quality_warning(self, data: ListingData):
+        missing = []
+        if data.price_eur is None:
+            missing.append("price")
+        if data.bedrooms is None:
+            missing.append("bedrooms")
+        if data.size_m2 is None:
+            missing.append("size_m2")
+        if not data.neighborhood_raw or data.neighborhood_raw.strip().lower() == "madrid":
+            missing.append("neighborhood")
+        if missing:
+            log.warning("[%s] Listing %s missing critical fields: %s", self.portal_key, data.url, ", ".join(missing))
 
     def run(self) -> dict:
         stats = {"seen": 0, "new": 0, "updated": 0}
@@ -296,6 +357,13 @@ class BaseScraper(ABC):
                             except (ScraperError, httpx.HTTPError) as e:
                                 log.warning("Detail fetch failed for %s: %s", partial.url, e)
 
+                        quality_score = self._quality_score(full)
+                        if full.raw is None:
+                            full.raw = {}
+                        full.raw = {**(full.raw or {}), "data_quality_score": quality_score}
+                        self._track_quality(full)
+                        self._log_quality_warning(full)
+
                         is_new, was_updated = self._upsert_listing(db, full)
                         if is_new:
                             stats["new"] += 1
@@ -304,6 +372,7 @@ class BaseScraper(ABC):
 
                     db.commit()
 
+                log.info("[%s] Quality stats: complete=%s total=%s missing_size=%s missing_description=%s missing_neighborhood=%s missing_furnished=%s", self.portal_key, self._quality_counts.get("complete", 0), self._quality_counts.get("total", 0), self._quality_counts.get("missing_size_m2", 0), self._quality_counts.get("missing_description", 0), self._quality_counts.get("missing_neighborhood", 0), self._quality_counts.get("missing_furnished", 0))
                 self._finish_run(db, self._run_id, stats)
                 db.commit()
         except RateLimitError as e:

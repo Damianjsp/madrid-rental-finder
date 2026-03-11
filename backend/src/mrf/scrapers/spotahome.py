@@ -1,25 +1,18 @@
 """
-Spotahome scraper — uses internal JSON API + JSON-LD from search pages.
+Spotahome scraper — markers discovery + robust detail page extraction.
 
 Run: python -m mrf.scrapers.spotahome
-
-Strategy:
-1. GET /api/fe/marketplace/markers/madrid → all listing IDs with coords & price range
-2. GET /es/s/madrid?page=N → JSON-LD ItemList with title, address, URL, images per page
-3. Merge markers data into listings (price from marker, details from JSON-LD)
-4. Optionally fetch detail page for richer data (bedrooms, bathrooms, etc.)
 """
 
 import json
 import logging
 import re
-import time
 from typing import Iterator
 
 import httpx
 from selectolax.parser import HTMLParser
 
-from mrf.scrapers.base import BaseScraper, ListingData, ParseError, RateLimitError
+from mrf.scrapers.base import BaseScraper, ListingData, ParseError
 
 log = logging.getLogger("mrf.scrapers.spotahome")
 
@@ -27,12 +20,11 @@ BASE_URL = "https://www.spotahome.com"
 MARKERS_URL = f"{BASE_URL}/api/fe/marketplace/markers/madrid"
 SEARCH_URL = f"{BASE_URL}/es/s/madrid"
 MAX_PAGES = 100
-PAGE_SIZE = 15  # JSON-LD returns 15 per page
 
 
 def _safe_int(val) -> int | None:
     try:
-        return int(val) if val is not None else None
+        return int(float(val)) if val is not None else None
     except (TypeError, ValueError):
         return None
 
@@ -44,64 +36,88 @@ def _safe_float(val) -> float | None:
         return None
 
 
+def _clean(text: str | None) -> str | None:
+    if not text:
+        return None
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or None
+
+
+def _extract_json_objects(html: str) -> list[dict]:
+    objs: list[dict] = []
+    for m in re.finditer(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html, re.DOTALL):
+        try:
+            payload = json.loads(m.group(1))
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            objs.append(payload)
+        elif isinstance(payload, list):
+            objs.extend([x for x in payload if isinstance(x, dict)])
+    return objs
+
+
+def _extract_breadcrumbs(tree: HTMLParser) -> list[str]:
+    crumbs = []
+    for node in tree.css('[itemprop="name"]'):
+        txt = _clean(node.text(strip=True))
+        if txt and txt not in crumbs:
+            crumbs.append(txt)
+    return crumbs
+
+
+def _infer_district_from_text(text: str | None) -> str | None:
+    if not text:
+        return None
+    patterns = [
+        r"madrid\s+(centro|salamanca|chamber[ií]|chamart[ií]n|tetu[aá]n|retiro|arganzuela|moncloa-aravaca|latina|carabanchel|usera|puente de vallecas|moratalaz|ciudad lineal|hortaleza|villaverde|villa de vallecas|vic[aá]lvaro|san blas-canillejas|barajas)",
+        r"(?:district|distrito)[:\s]+([a-zA-ZÁÉÍÓÚáéíóúñÑ\- ]+)",
+        r"rooms?\s+for\s+rent\s+in\s+madrid\s+([a-zA-ZÁÉÍÓÚáéíóúñÑ\- ]+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.I)
+        if m:
+            return _clean(m.group(1).title())
+    return None
+
+
 def _parse_json_ld_item(item: dict, marker: dict | None) -> ListingData:
-    """Parse a JSON-LD LodgingBusiness item from the search page."""
     inner = item.get("item", item)
     lid = str(inner.get("identifier", ""))
-
-    # URL
     url_path = inner.get("url", "")
-    if url_path.startswith("/"):
-        url = BASE_URL + url_path
-    else:
-        url = url_path or f"{BASE_URL}/es/madrid/for-rent:rooms/{lid}"
-
-    # Title
+    url = BASE_URL + url_path if url_path.startswith("/") else (url_path or f"{BASE_URL}/es/madrid/for-rent:rooms/{lid}")
     title = inner.get("name", "")
-
-    # Address
     address = inner.get("address", {}) or {}
     address_raw = address.get("streetAddress")
     neighborhood_raw = address.get("addressLocality")
     district_raw = None
-
-    # Price from marker (markers have price range)
     price_eur = None
     lat = None
     lon = None
     if marker:
-        min_price = _safe_int(marker.get("minimumPrice"))
-        max_price = _safe_int(marker.get("maximumPrice"))
-        if min_price is not None:
-            price_eur = min_price
+        price_eur = _safe_int(marker.get("minimumPrice")) or _safe_int(marker.get("price"))
         coord = marker.get("coord", [None, None])
         if coord and len(coord) == 2:
             lon = _safe_float(coord[0])
             lat = _safe_float(coord[1])
-
-    # Rooms
     bedrooms = _safe_int(inner.get("numberOfRooms"))
     bathrooms = _safe_int(inner.get("numberOfBathroomsTotal"))
-
-    # Images
     images = []
     img = inner.get("image")
     if isinstance(img, str) and img.startswith("http"):
         images = [img]
     elif isinstance(img, list):
         images = [i for i in img if isinstance(i, str) and i.startswith("http")][:10]
-
-    # Property type from title
     title_lower = title.lower() if title else ""
     if "estudio" in title_lower:
         property_type = "estudio"
     elif "habitaci" in title_lower:
         property_type = "habitacion"
-    elif "piso" in title_lower or "apartamento" in title_lower:
+    elif "apart" in title_lower or "piso" in title_lower:
         property_type = "piso"
     else:
         property_type = "piso"
-
     return ListingData(
         source_listing_id=lid,
         url=url,
@@ -117,62 +133,115 @@ def _parse_json_ld_item(item: dict, marker: dict | None) -> ListingData:
         lat=lat,
         lon=lon,
         images=images,
-        raw={
-            "identifier": lid,
-            "marker": marker,
-            "address": address,
-        },
+        raw={"identifier": lid, "marker": marker, "address": address},
     )
 
 
 def _parse_detail_page(html: str, partial: ListingData) -> ListingData:
-    """Extract richer data from a Spotahome detail page."""
-    # Try JSON-LD on detail page
-    for m in re.finditer(
-        r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html, re.DOTALL
-    ):
-        try:
-            d = json.loads(m.group(1))
-            if isinstance(d, dict) and d.get("@type") in (
-                "LodgingBusiness",
-                "Apartment",
-                "Product",
-            ):
-                if not partial.bedrooms:
-                    partial.bedrooms = _safe_int(d.get("numberOfRooms"))
-                if not partial.bathrooms:
-                    partial.bathrooms = _safe_int(d.get("numberOfBathroomsTotal"))
-                # Price from offers
-                offers = d.get("offers", {}) or {}
-                if isinstance(offers, dict) and not partial.price_eur:
-                    partial.price_eur = _safe_int(
-                        offers.get("price") or offers.get("lowPrice")
-                    )
-        except Exception:
-            pass
-
-    # Extract size from page text
     tree = HTMLParser(html)
-    text = tree.body.text(strip=True) if tree.body else ""
-    if not partial.size_m2:
-        m = re.search(r"([\d.]+)\s*m[²2]", text, re.I)
-        if m:
-            try:
-                partial.size_m2 = float(m.group(1))
-            except ValueError:
-                pass
+    lowered = html.lower()
+    json_docs = _extract_json_objects(html)
 
-    # More images
+    for d in json_docs:
+        kind = d.get("@type")
+        if kind == "Product":
+            partial.title = partial.title or d.get("name")
+            partial.description = partial.description or _clean(d.get("description"))
+            offers = d.get("offers", {}) or {}
+            partial.price_eur = partial.price_eur or _safe_int(offers.get("price") or offers.get("lowPrice"))
+        if kind in {"Apartment", "Residence", "LodgingBusiness", "ApartmentComplex"}:
+            partial.bedrooms = partial.bedrooms or _safe_int(d.get("numberOfRooms"))
+            partial.bathrooms = partial.bathrooms or _safe_int(d.get("numberOfBathroomsTotal"))
+            adr = d.get("address", {}) or {}
+            partial.address_raw = partial.address_raw or adr.get("streetAddress")
+            partial.neighborhood_raw = partial.neighborhood_raw or adr.get("addressLocality")
+
+    if not partial.description:
+        meta_match = re.search(r'<meta[^>]+(?:name|property)="(?:description|og:description)"[^>]+content="([^"]+)"', html, re.I)
+        if meta_match:
+            partial.description = _clean(meta_match.group(1))
+
+    embedded_desc = re.search(r'"description":"(<p>.*?</p>)"', html, re.S)
+    if embedded_desc and (not partial.description or len(partial.description) < 80):
+        partial.description = _clean(embedded_desc.group(1))
+
+    for pattern in [r'([\d]+(?:[.,]\d+)?)m²', r'([\d]+(?:[.,]\d+)?)\s*m\^?2', r'"area":([\d]+(?:\.\d+)?)']:
+        if partial.size_m2 is None:
+            m = re.search(pattern, html, re.I)
+            if m:
+                partial.size_m2 = _safe_float(m.group(1).replace(',', '.'))
+
+    if partial.lat is None or partial.lon is None:
+        m = re.search(r'"coords":\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]', html)
+        if m:
+            partial.lon = partial.lon if partial.lon is not None else _safe_float(m.group(1))
+            partial.lat = partial.lat if partial.lat is not None else _safe_float(m.group(2))
+
+    if partial.address_raw is None:
+        m = re.search(r'"address":"([^"]+)"', html)
+        if m:
+            partial.address_raw = _clean(m.group(1))
+
+    if partial.property_type is None:
+        m = re.search(r'"property type:\s*([^<]+)<', lowered)
+        if m:
+            partial.property_type = _clean(m.group(1))
+    if partial.property_type == "piso" and re.search(r'"type":"room_', html):
+        partial.property_type = "habitacion"
+
+    # Extract neighborhood from propertySeoMetaTitle (e.g. "Rooms for rent in Madrid Centro")
+    seo_match = re.search(r'"propertySeoMetaTitle":"([^"]+)"', html)
+    if seo_match:
+        seo_title = seo_match.group(1)
+        m = re.search(r"(?:in|en)\s+(?:Madrid\s+)?(.+)", seo_title, re.I)
+        if m:
+            candidate = _clean(m.group(1))
+            if candidate and candidate.lower() not in {"madrid", "spain", "españa"}:
+                partial.neighborhood_raw = partial.neighborhood_raw or candidate
+
+    # Breadcrumbs as fallback for neighborhood
+    breadcrumbs = _extract_breadcrumbs(tree)
+    _skip = {"inicio", "madrid", "españa", "spain"}
+    if not partial.neighborhood_raw:
+        for crumb in breadcrumbs[::-1]:
+            cl = crumb.lower()
+            if cl in _skip or "alquiler" in cl or "piso en" in cl or "habitaci" in cl or "room" in cl:
+                continue
+            partial.neighborhood_raw = crumb
+            break
+
+    district_hint = None
+    for candidate in [partial.title, partial.description, _clean(" ".join(breadcrumbs)), html]:
+        district_hint = _infer_district_from_text(candidate)
+        if district_hint:
+            break
+    if district_hint:
+        partial.district_raw = partial.district_raw or district_hint
+
+    detail_text = _clean(html)
+    if partial.furnished is None:
+        if re.search(r'\bamueblad[oa]s?\b|\bfurnished\b', lowered):
+            partial.furnished = True
+        elif re.search(r'sin muebles|unfurnished', lowered):
+            partial.furnished = False
+
+    if partial.elevator is None:
+        if re.search(r'ascensor|elevator:\s*yes', lowered):
+            partial.elevator = True
+        elif re.search(r'elevator:\s*no', lowered):
+            partial.elevator = False
+
+    if detail_text:
+        partial.raw = {**(partial.raw or {}), "detail_excerpt": detail_text[:1200]}
+
     images = list(partial.images)
-    for img in tree.css("img[src]"):
-        src = img.attributes.get("src", "")
-        if (
-            src.startswith("http")
-            and "spotahome" in src
-            and src not in images
-        ):
+    for img in tree.css('img[src], source[srcset]'):
+        src = img.attributes.get('src') or img.attributes.get('srcset', '')
+        if src and ',' in src:
+            src = src.split(',')[0].strip().split(' ')[0]
+        if src.startswith('http') and 'spotahome' in src and src not in images:
             images.append(src)
-        if len(images) >= 10:
+        if len(images) >= 12:
             break
     partial.images = images
 
@@ -182,7 +251,7 @@ def _parse_detail_page(html: str, partial: ListingData) -> ListingData:
 class SpotahomeScraper(BaseScraper):
     portal_key = "spotahome"
     rate_min = 1.0
-    rate_max = 5.0
+    rate_max = 4.0
 
     def _build_client(self) -> httpx.Client:
         return httpx.Client(
@@ -197,103 +266,63 @@ class SpotahomeScraper(BaseScraper):
         )
 
     def _fetch_markers(self) -> dict[str, dict]:
-        """Fetch all listing markers (ID → {price, coords}) in one request."""
         log.info("[spotahome] Fetching all markers...")
-        resp = self._client.get(  # type: ignore
-            MARKERS_URL,
-            headers={"Accept": "application/json"},
-        )
-        resp.raise_for_status()
+        resp = self._get(MARKERS_URL, headers={"Accept": "application/json"}, retries=3)
         markers = resp.json().get("data", [])
-        log.info(f"[spotahome] Got {len(markers)} markers")
-        # Map rentableId → marker data; also track unique adIds
+        log.info("[spotahome] Got %s markers", len(markers))
         by_id: dict[str, dict] = {}
-        for m in markers:
-            lid = str(m.get("id", ""))
+        for marker in markers:
+            lid = str(marker.get("id", ""))
             if lid:
-                by_id[lid] = m
+                by_id[lid] = marker
         return by_id
 
     def list_pages(self) -> Iterator[list[ListingData]]:
-        # Step 1: bulk-fetch all markers (one request, fast)
-        import time
-
-        time.sleep(2)
         markers_by_id = self._fetch_markers()
-
-        # Step 2: paginate search pages for JSON-LD details
         page = 1
         seen_ids: set[str] = set()
-
         while page <= MAX_PAGES:
             url = f"{SEARCH_URL}?page={page}" if page > 1 else SEARCH_URL
-            log.info(f"[spotahome] Fetching search page {page}")
-
+            log.info("[spotahome] Fetching search page %s", page)
             try:
                 resp = self._get(url)
             except Exception as e:
-                log.error(f"[spotahome] Search page {page} failed: {e}")
+                log.error("[spotahome] Search page %s failed: %s", page, e)
                 break
-
-            # Extract JSON-LD ItemList
             page_listings: list[ListingData] = []
-            found = False
-            for m in re.finditer(
-                r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>',
-                resp.text,
-                re.DOTALL,
-            ):
-                try:
-                    d = json.loads(m.group(1))
-                    if isinstance(d, dict) and d.get("@type") == "ItemList":
-                        items = d.get("itemListElement", [])
-                        found = True
-                        for item in items:
-                            lid = str(item.get("item", {}).get("identifier", ""))
-                            if lid and lid not in seen_ids:
-                                seen_ids.add(lid)
-                                marker = markers_by_id.get(lid)
-                                listing = _parse_json_ld_item(item, marker)
-                                if listing.source_listing_id:
-                                    page_listings.append(listing)
-                except Exception:
-                    pass
-
-            if not found or not page_listings:
-                log.info(f"[spotahome] No more listings at page {page}")
+            for payload in _extract_json_objects(resp.text):
+                if payload.get("@type") != "ItemList":
+                    continue
+                for item in payload.get("itemListElement", []):
+                    lid = str(item.get("item", {}).get("identifier", ""))
+                    if not lid or lid in seen_ids:
+                        continue
+                    seen_ids.add(lid)
+                    listing = _parse_json_ld_item(item, markers_by_id.get(lid))
+                    if listing.source_listing_id:
+                        page_listings.append(listing)
+            if not page_listings:
+                log.info("[spotahome] No more listings at page %s", page)
                 break
-
-            log.info(f"[spotahome] Page {page}: {len(page_listings)} listings")
             yield page_listings
             page += 1
 
-        if page > MAX_PAGES:
-            log.warning(f"[spotahome] Reached MAX_PAGES={MAX_PAGES}; stopping pagination")
-
-        # Step 3: emit any remaining markers not seen in search pages
-        # (markers with IDs not in any JSON-LD page — use sparse data)
-        remaining = [
-            m for lid, m in markers_by_id.items() if lid not in seen_ids
-        ]
+        remaining = [m for lid, m in markers_by_id.items() if lid not in seen_ids]
         if remaining:
-            log.info(
-                f"[spotahome] Emitting {len(remaining)} listings from markers only"
-            )
             batch: list[ListingData] = []
-            for m in remaining:
-                lid = str(m.get("id", ""))
-                min_price = _safe_int(m.get("minimumPrice"))
-                coord = m.get("coord", [None, None])
-                listing = ListingData(
+            for marker in remaining:
+                lid = str(marker.get("id", ""))
+                coord = marker.get("coord", [None, None])
+                kind = str(marker.get("type") or "rooms")
+                batch.append(ListingData(
                     source_listing_id=lid,
-                    url=f"{BASE_URL}/es/madrid/for-rent:rooms/{lid}",
-                    price_eur=min_price,
+                    url=f"{BASE_URL}/es/madrid/for-rent:{kind}/{lid}",
+                    price_eur=_safe_int(marker.get("minimumPrice")),
                     lat=_safe_float(coord[1]) if coord else None,
                     lon=_safe_float(coord[0]) if coord else None,
                     municipality_raw="Madrid",
-                    raw=m,
-                )
-                batch.append(listing)
+                    raw=marker,
+                ))
                 if len(batch) >= 50:
                     yield batch
                     batch = []
@@ -301,25 +330,22 @@ class SpotahomeScraper(BaseScraper):
                 yield batch
 
     def fetch_detail(self, partial: ListingData) -> ListingData:
-        """Fetch detail page only if we're missing key fields."""
-        if partial.title and partial.price_eur and partial.bedrooms:
-            return partial
         try:
-            resp = self._get(partial.url)
-            return _parse_detail_page(resp.text, partial)
+            resp = self._get(partial.url, retries=4, retry_backoff=3.0)
+            full = _parse_detail_page(resp.text, partial)
+            if not full.description and not full.size_m2 and not full.neighborhood_raw:
+                raise ParseError(f"Spotahome detail parse weak for {partial.url}")
+            return full
         except Exception as e:
-            log.debug(f"[spotahome] Detail skip {partial.url}: {e}")
-            return partial
+            log.warning("[spotahome] Detail fetch failed for %s: %s", partial.url, e)
+            raise
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s — %(message)s")
     scraper = SpotahomeScraper()
     stats = scraper.run()
-    log.info(f"Done: {stats}")
+    log.info("Done: %s", stats)
 
 
 if __name__ == "__main__":
