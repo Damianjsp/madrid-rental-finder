@@ -35,6 +35,7 @@ PORTALS = [
     {"key": "pisos", "name": "Pisos.com", "tier": 1, "base_url": "https://www.pisos.com"},
     {"key": "habitaclia", "name": "Habitaclia", "tier": 1, "base_url": "https://www.habitaclia.com"},
     {"key": "enalquiler", "name": "Enalquiler", "tier": 1, "base_url": "https://www.enalquiler.com"},
+    {"key": "tranquiler", "name": "Tranquiler (Agencia Negociadora del Alquiler)", "tier": 1, "base_url": "https://www.agencianegociadoradelalquiler.com"},
 ]
 
 # ---------------------------------------------------------------------------

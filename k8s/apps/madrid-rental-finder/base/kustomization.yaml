@@ -15,6 +15,7 @@ resources:
   - cronjob-scrape-yaencontre.yaml
   - cronjob-scrape-habitaclia.yaml
   - cronjob-scrape-enalquiler.yaml
+  - cronjob-scrape-tranquiler.yaml
   - cronjob-reconcile.yaml
 
 commonLabels:
