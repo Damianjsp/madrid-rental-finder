@@ -157,7 +157,33 @@ class BaseScraper(ABC):
             raise ScraperError(f"Portal '{self.portal_key}' not found in DB. Run seed first.")
         return portal.id
 
+    def _cleanup_interrupted_runs(self, db: Session) -> int:
+        stale_runs = (
+            db.query(ScraperRun)
+            .filter(
+                ScraperRun.portal_id == self._portal_id,
+                ScraperRun.status == "running",
+                ScraperRun.finished_at.is_(None),
+            )
+            .all()
+        )
+        cleaned = 0
+        now = datetime.now(timezone.utc)
+        current_run_id = self._run_id
+        for stale_run in stale_runs:
+            if current_run_id is not None and stale_run.id == current_run_id:
+                continue
+            stale_run.status = "stale"
+            stale_run.finished_at = now
+            stale_run.error_message = "interrupted — cleaned up by new run"
+            cleaned += 1
+        if cleaned:
+            log.warning("[%s] Cleaned up %s interrupted run(s)", self.portal_key, cleaned)
+        db.flush()
+        return cleaned
+
     def _start_run(self, db: Session) -> int:
+        self._cleanup_interrupted_runs(db)
         run = ScraperRun(portal_id=self._portal_id, status="running")
         db.add(run)
         db.flush()

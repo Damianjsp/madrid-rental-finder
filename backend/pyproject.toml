@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Madrid Rental Finder — backend"
 requires-python = ">=3.12"
 dependencies = [
+    "click>=8.1.7",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     "sqlalchemy>=2.0.30",
@@ -30,6 +31,7 @@ dev = [
 ]
 
 [project.scripts]
+mrf = "mrf.cli:main"
 mrf-api = "mrf.api.main:run"
 
 [tool.hatch.build.targets.wheel]
