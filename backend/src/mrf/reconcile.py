@@ -10,6 +10,9 @@ from mrf.db.session import get_db
 
 def reconcile_listings(stale_after_days: int = 7) -> dict[str, int]:
     """Mark stale active listings inactive and return a summary."""
+    if stale_after_days < 0:
+        raise ValueError("stale_after_days must be >= 0")
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=stale_after_days)
     with get_db() as db:
         stale_listings = (

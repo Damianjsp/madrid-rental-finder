@@ -163,12 +163,16 @@ class BaseScraper(ABC):
             .filter(
                 ScraperRun.portal_id == self._portal_id,
                 ScraperRun.status == "running",
+                ScraperRun.finished_at.is_(None),
             )
             .all()
         )
         cleaned = 0
         now = datetime.now(timezone.utc)
+        current_run_id = self._run_id
         for stale_run in stale_runs:
+            if current_run_id is not None and stale_run.id == current_run_id:
+                continue
             stale_run.status = "stale"
             stale_run.finished_at = now
             stale_run.error_message = "interrupted — cleaned up by new run"
