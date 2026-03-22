@@ -11,10 +11,10 @@ resources:
 images:
 - name: dahomelab.azurecr.io/madrid-rental-finder/api
   newName: dahomelab.azurecr.io/madrid-rental-finder/api
-  newTag: sha-bf331dfd2944073735c25ba9c1f247b62be1ab3f
+  newTag: sha-6ba19bea05675da8ae3c40f02a9bc534d33cb7bd
 - name: dahomelab.azurecr.io/madrid-rental-finder/dashboard
   newName: dahomelab.azurecr.io/madrid-rental-finder/dashboard
-  newTag: sha-bf331dfd2944073735c25ba9c1f247b62be1ab3f
+  newTag: sha-6ba19bea05675da8ae3c40f02a9bc534d33cb7bd
 
 patches:
 - path: resources-patch.yaml
