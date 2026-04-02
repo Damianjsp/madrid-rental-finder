@@ -23,7 +23,7 @@ spec:
         - name: acr-secret
       containers:
         - name: api
-          image: dahomelab.azurecr.io/madrid-rental-finder/api:latest
+          image: mimircrsce.azurecr.io/madrid-rental-finder/api:latest
           imagePullPolicy: Always
           ports:
             - name: http

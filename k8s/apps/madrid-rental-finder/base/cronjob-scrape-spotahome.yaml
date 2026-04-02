@@ -28,7 +28,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: scraper
-              image: dahomelab.azurecr.io/madrid-rental-finder/api:latest
+              image: mimircrsce.azurecr.io/madrid-rental-finder/api:latest
               imagePullPolicy: Always
               command: ["python", "-m", "mrf.cli", "scrape", "spotahome"]
               env:
