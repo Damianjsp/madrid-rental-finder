@@ -9,11 +9,11 @@ resources:
 # Image tags — updated by CI pipeline (approach B: commit tag bumps)
 # CI runs: kustomize edit set image ...
 images:
-- name: dahomelab.azurecr.io/madrid-rental-finder/api
-  newName: dahomelab.azurecr.io/madrid-rental-finder/api
+- name: mimircrsce.azurecr.io/madrid-rental-finder/api
+  newName: mimircrsce.azurecr.io/madrid-rental-finder/api
   newTag: sha-6ba19bea05675da8ae3c40f02a9bc534d33cb7bd
-- name: dahomelab.azurecr.io/madrid-rental-finder/dashboard
-  newName: dahomelab.azurecr.io/madrid-rental-finder/dashboard
+- name: mimircrsce.azurecr.io/madrid-rental-finder/dashboard
+  newName: mimircrsce.azurecr.io/madrid-rental-finder/dashboard
   newTag: sha-6ba19bea05675da8ae3c40f02a9bc534d33cb7bd
 
 patches:
