@@ -343,8 +343,6 @@ class BaseScraper(ABC):
 
     def _track_quality(self, data: ListingData):
         self._quality_counts["total"] += 1
-        if data.price_eur is None:
-            self._quality_counts["missing_price"] += 1
         if data.bedrooms is None:
             self._quality_counts["missing_bedrooms"] += 1
         if data.size_m2 is None:
