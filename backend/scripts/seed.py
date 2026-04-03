@@ -30,7 +30,6 @@ SOURCE = "pisos.com live listings + safety-transport research"
 # Portals
 # ---------------------------------------------------------------------------
 PORTALS = [
-    {"key": "spotahome", "name": "Spotahome", "tier": 1, "base_url": "https://www.spotahome.com"},
     {"key": "yaencontre", "name": "Yaencontre", "tier": 1, "base_url": "https://www.yaencontre.com"},
     {"key": "pisos", "name": "Pisos.com", "tier": 1, "base_url": "https://www.pisos.com"},
     {"key": "habitaclia", "name": "Habitaclia", "tier": 1, "base_url": "https://www.habitaclia.com"},

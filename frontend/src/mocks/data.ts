@@ -1,7 +1,6 @@
 import type { Listing, Neighborhood, Stats, Portal, ListingsResponse } from '../types'
 
 export const MOCK_PORTALS: Portal[] = [
-  { id: 1, key: 'spotahome', name: 'Spotahome', base_url: 'https://www.spotahome.com', last_scrape: '2026-03-10T22:00:00Z', scrape_status: 'success', listings_count: 142 },
   { id: 2, key: 'pisos', name: 'Pisos.com', base_url: 'https://www.pisos.com', last_scrape: '2026-03-10T21:30:00Z', scrape_status: 'success', listings_count: 89 },
   { id: 3, key: 'yaencontre', name: 'Yaencontre', base_url: 'https://www.yaencontre.com', last_scrape: '2026-03-10T20:00:00Z', scrape_status: 'error', listings_count: 0 },
   { id: 4, key: 'habitaclia', name: 'Habitaclia', base_url: 'https://www.habitaclia.com', last_scrape: undefined, scrape_status: 'never', listings_count: 0 },
@@ -27,24 +26,6 @@ const now = new Date()
 const daysAgo = (d: number) => new Date(now.getTime() - d * 86400000).toISOString()
 
 export const MOCK_LISTINGS: Listing[] = [
-  {
-    id: 1, portal_id: 1, portal_key: 'spotahome', portal_name: 'Spotahome',
-    source_listing_id: 'SPH-001', url: 'https://www.spotahome.com/listings/001',
-    title: 'Luminoso piso en Malasaña con terraza', description: 'Piso reformado de 2 habitaciones en el corazón de Malasaña. Cocina equipada, baño moderno, terraza privada de 8m². Amueblado con gusto. Metro Tribunal a 3 minutos.',
-    price_eur: 1350, deposit_eur: 2700, expenses_included: false,
-    bedrooms: 2, bathrooms: 1, size_m2: 68, property_type: 'piso',
-    furnished: true, elevator: false, parking: false,
-    address_raw: 'Calle Fuencarral 45, Malasaña', neighborhood_raw: 'Malasaña', district_raw: 'Centro',
-    neighborhood_id: 1, neighborhood_name: 'Malasaña', district_id: 1, district_name: 'Centro',
-    first_seen_at: daysAgo(0), last_seen_at: daysAgo(0), is_active: true,
-    neighborhood_safety_score: 3, neighborhood_transport_score: 5,
-    district_avg_rent_1bed: 1100, district_avg_rent_2bed: 1500, district_avg_rent_3bed: 2100,
-    images: [
-      { id: 1, url: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800', position: 0 },
-      { id: 2, url: 'https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800', position: 1 },
-      { id: 3, url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800', position: 2 },
-    ]
-  },
   {
     id: 2, portal_id: 2, portal_key: 'pisos', portal_name: 'Pisos.com',
     source_listing_id: 'PIS-002', url: 'https://www.pisos.com/listings/002',
@@ -77,20 +58,6 @@ export const MOCK_LISTINGS: Listing[] = [
       { id: 5, url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800', position: 0 },
       { id: 6, url: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800', position: 1 },
     ]
-  },
-  {
-    id: 4, portal_id: 1, portal_key: 'spotahome', portal_name: 'Spotahome',
-    source_listing_id: 'SPH-004', url: 'https://www.spotahome.com/listings/004',
-    title: 'Habitación en piso compartido — Chueca', description: 'Habitación amplia en piso de 4 personas. Zona céntrica e ideal para recién llegados. Gastos incluidos.',
-    price_eur: 650, deposit_eur: 650, expenses_included: true,
-    bedrooms: 1, bathrooms: 1, size_m2: 18, property_type: 'habitacion',
-    furnished: true, elevator: false, parking: false,
-    address_raw: 'Calle Hortaleza 55, Chueca', neighborhood_raw: 'Chueca', district_raw: 'Centro',
-    neighborhood_id: 3, neighborhood_name: 'Chueca', district_id: 1, district_name: 'Centro',
-    first_seen_at: daysAgo(0), last_seen_at: daysAgo(0), is_active: true,
-    neighborhood_safety_score: 4, neighborhood_transport_score: 5,
-    district_avg_rent_1bed: 1200, district_avg_rent_2bed: 1700, district_avg_rent_3bed: 2400,
-    images: []
   },
   {
     id: 5, portal_id: 2, portal_key: 'pisos', portal_name: 'Pisos.com',
@@ -139,23 +106,6 @@ export const MOCK_LISTINGS: Listing[] = [
     ]
   },
   {
-    id: 8, portal_id: 1, portal_key: 'spotahome', portal_name: 'Spotahome',
-    source_listing_id: 'SPH-008', url: 'https://www.spotahome.com/listings/008',
-    title: 'Estudio moderno en Lista (Salamanca)', description: 'Estudio de diseño en barrio Salamanca. Reformado en 2024, domótica, cocina americana. Muy silencioso.',
-    price_eur: 1100, deposit_eur: 1100, expenses_included: true,
-    bedrooms: 1, bathrooms: 1, size_m2: 42, property_type: 'estudio',
-    furnished: true, elevator: true, parking: false,
-    address_raw: 'Calle Ayala 88, Lista', neighborhood_raw: 'Lista', district_raw: 'Salamanca',
-    neighborhood_id: 5, neighborhood_name: 'Lista', district_id: 2, district_name: 'Salamanca',
-    first_seen_at: daysAgo(1), last_seen_at: daysAgo(0), is_active: true,
-    neighborhood_safety_score: 5, neighborhood_transport_score: 4,
-    district_avg_rent_1bed: 1500, district_avg_rent_2bed: 2100, district_avg_rent_3bed: 3000,
-    images: [
-      { id: 9, url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800', position: 0 },
-      { id: 10, url: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800', position: 1 },
-    ]
-  },
-  {
     id: 9, portal_id: 5, portal_key: 'enalquiler', portal_name: 'Enalquiler',
     source_listing_id: 'ENQ-009', url: 'https://www.enalquiler.com/listings/009',
     title: 'Piso 1 hab. en Carabanchel — recién reformado', description: 'Piso de 1 habitación completamente reformado. Calefacción central, carpintería nueva. Muy tranquilo.',
@@ -188,20 +138,19 @@ export const MOCK_LISTINGS: Listing[] = [
 ]
 
 export const MOCK_STATS: Stats = {
-  total_active_listings: 9,
-  total_listings: 10,
-  new_today: 3,
+  total_active_listings: 6,
+  total_listings: 7,
+  new_today: 2,
   last_updated: new Date().toISOString(),
   by_portal: [
-    { portal_key: 'spotahome', portal_name: 'Spotahome', listings_count: 142, last_scrape_at: '2026-03-10T22:00:00Z', scrape_status: 'success' },
     { portal_key: 'pisos', portal_name: 'Pisos.com', listings_count: 89, last_scrape_at: '2026-03-10T21:30:00Z', scrape_status: 'success' },
     { portal_key: 'yaencontre', portal_name: 'Yaencontre', listings_count: 0, last_scrape_at: '2026-03-10T20:00:00Z', scrape_status: 'error' },
     { portal_key: 'habitaclia', portal_name: 'Habitaclia', listings_count: 0, last_scrape_at: undefined, scrape_status: 'never' },
     { portal_key: 'enalquiler', portal_name: 'Enalquiler', listings_count: 67, last_scrape_at: '2026-03-10T19:00:00Z', scrape_status: 'success' },
   ],
   by_district: [
-    { district_name: 'Centro', listings_count: 4, avg_price: 987, min_price: 650, max_price: 1350 },
-    { district_name: 'Salamanca', listings_count: 2, avg_price: 1650, min_price: 1100, max_price: 2200 },
+    { district_name: 'Centro', listings_count: 1, avg_price: 850, min_price: 850, max_price: 850 },
+    { district_name: 'Salamanca', listings_count: 1, avg_price: 2200, min_price: 2200, max_price: 2200 },
     { district_name: 'Arganzuela', listings_count: 1, avg_price: 1100, min_price: 1100, max_price: 1100 },
     { district_name: 'Chamartín', listings_count: 1, avg_price: 1050, min_price: 1050, max_price: 1050 },
     { district_name: 'Usera', listings_count: 1, avg_price: 980, min_price: 980, max_price: 980 },

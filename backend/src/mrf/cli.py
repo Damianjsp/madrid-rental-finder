@@ -13,7 +13,6 @@ from typing import Any
 import click
 
 PORTAL_MODULES: dict[str, str] = {
-    "spotahome": "spotahome",
     "pisos": "pisos",
     "enalquiler": "enalquiler",
     "habitaclia": "habitaclia",

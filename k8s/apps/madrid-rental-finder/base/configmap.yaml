@@ -10,7 +10,6 @@ data:
   MRF_LOG_LEVEL: "INFO"
 
   # Portal base URLs
-  MRF_SPOTAHOME_BASE_URL: "https://www.spotahome.com"
   MRF_PISOS_BASE_URL: "https://www.pisos.com"
   MRF_YAENCONTRE_BASE_URL: "https://www.yaencontre.com"
   MRF_HABITACLIA_BASE_URL: "https://www.habitaclia.com"
