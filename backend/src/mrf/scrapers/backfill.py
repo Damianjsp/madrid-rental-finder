@@ -2,7 +2,7 @@
 Backfill missing detail data for existing listings.
 
 Usage:
-    python -m mrf.scrapers.backfill [--portal spotahome|pisos|enalquiler] [--limit 100] [--dry-run]
+    python -m mrf.scrapers.backfill [--portal pisos|enalquiler] [--limit 100] [--dry-run]
 
 Queries listings missing description OR size_m2 OR furnished OR neighborhood,
 fetches their detail pages, and updates the DB.  Always attempts the fetch and
@@ -26,12 +26,10 @@ from mrf.scrapers.base import BaseScraper, ListingData
 log = logging.getLogger("mrf.scrapers.backfill")
 
 # Import concrete scrapers for their detail parsers
-from mrf.scrapers.spotahome import SpotahomeScraper, _parse_detail_page as _spotahome_detail
 from mrf.scrapers.pisos import PisosScraper, _parse_detail as _pisos_detail
 from mrf.scrapers.enalquiler import EnalquilerScraper, _parse_detail as _enalquiler_detail
 
 PORTAL_MAP = {
-    "spotahome": (SpotahomeScraper, _spotahome_detail),
     "pisos": (PisosScraper, _pisos_detail),
     "enalquiler": (EnalquilerScraper, _enalquiler_detail),
 }
