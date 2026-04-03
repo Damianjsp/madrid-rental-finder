@@ -11,10 +11,10 @@ resources:
 images:
 - name: mimircrsce.azurecr.io/madrid-rental-finder/api
   newName: mimircrsce.azurecr.io/madrid-rental-finder/api
-  newTag: sha-08caef90c9eec5a45365df9132bfa522f625bec1
+  newTag: sha-9482b0e3198234b834201ba2eb3e426e874695bd
 - name: mimircrsce.azurecr.io/madrid-rental-finder/dashboard
   newName: mimircrsce.azurecr.io/madrid-rental-finder/dashboard
-  newTag: sha-08caef90c9eec5a45365df9132bfa522f625bec1
+  newTag: sha-9482b0e3198234b834201ba2eb3e426e874695bd
 
 patches:
 - path: resources-patch.yaml
