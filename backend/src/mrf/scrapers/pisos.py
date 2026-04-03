@@ -31,6 +31,8 @@ def _clean(text: str | None) -> str | None:
 def _parse_price(text: str | None) -> int | None:
     if not text:
         return None
+    if any(kw in text.lower() for kw in ("consultar", "llamar", "contacto", "a convenir")):
+        return None
     text = text.replace(".", "").replace(",", "")
     digits = re.sub(r"[^\d]", "", text)
     return int(digits) if digits else None
