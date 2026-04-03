@@ -125,6 +125,10 @@ def list_listings(
 
     if active_only:
         q = q.filter(Listing.is_active.is_(True))
+
+    # Always exclude listings without a published price
+    q = q.filter(Listing.price_eur.isnot(None))
+
     if price_min is not None:
         q = q.filter(Listing.price_eur >= price_min)
     if price_max is not None:

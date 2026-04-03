@@ -202,11 +202,13 @@ class BaseScraper(ABC):
         run.listings_updated = stats.get("updated", 0)
         run.error_message = error
         db.flush()
-        log.info(
-            "[%s] Run #%s finished: seen=%s new=%s updated=%s",
-            self.portal_key, run_id,
-            run.listings_seen, run.listings_new, run.listings_updated,
-        )
+        skipped_no_price = stats.get("skipped_no_price")
+        log_parts = [
+            f"[{self.portal_key}] Run #{run_id} finished: seen={run.listings_seen} new={run.listings_new} updated={run.listings_updated}"
+        ]
+        if skipped_no_price:
+            log_parts.append(f"skipped_no_price={skipped_no_price}")
+        log.info(" ".join(log_parts))
 
     # ---- Upsert ----
 
@@ -341,8 +343,6 @@ class BaseScraper(ABC):
 
     def _track_quality(self, data: ListingData):
         self._quality_counts["total"] += 1
-        if data.price_eur is None:
-            self._quality_counts["missing_price"] += 1
         if data.bedrooms is None:
             self._quality_counts["missing_bedrooms"] += 1
         if data.size_m2 is None:
@@ -402,6 +402,13 @@ class BaseScraper(ABC):
                                 full = self.fetch_detail(partial)
                             except (ScraperError, httpx.HTTPError) as e:
                                 log.warning("Detail fetch failed for %s: %s", partial.url, e)
+
+                        # Skip listings without a price ("Consultar" / call-for-price)
+                        if full.price_eur is None:
+                            stats.setdefault("skipped_no_price", 0)
+                            stats["skipped_no_price"] += 1
+                            log.info("[%s] Skipping %s — no price (call-for-price)", self.portal_key, full.url)
+                            continue
 
                         quality_score = self._quality_score(full)
                         if full.raw is None:

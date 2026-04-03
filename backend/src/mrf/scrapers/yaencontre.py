@@ -36,6 +36,12 @@ def _clean(text: str | None) -> str | None:
 def _parse_price(text: str | None) -> int | None:
     if not text:
         return None
+    normalized = text.strip().lower()
+    # This guard only evaluates the dedicated price text extracted by the CSS selector,
+    # not the full listing HTML, so contact details elsewhere in the card will not
+    # trigger a false positive here. Match whole-text call-for-price labels only.
+    if normalized in {"consultar", "llamar", "a consultar", "contacto", "a convenir"}:
+        return None
     digits = re.sub(r"[^\d]", "", text.replace(".", ""))
     return int(digits) if digits else None
 

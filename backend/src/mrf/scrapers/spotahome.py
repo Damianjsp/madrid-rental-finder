@@ -100,6 +100,8 @@ def _parse_json_ld_item(item: dict, marker: dict | None) -> ListingData:
     lat = None
     lon = None
     if marker:
+        # Spotahome pricing comes from the markers JSON API as numeric values (or null),
+        # not free-form DOM text, so the HTML scraper keyword guard is not needed here.
         price_eur = _safe_int(marker.get("minimumPrice")) or _safe_int(marker.get("price"))
         coord = marker.get("coord", [None, None])
         if coord and len(coord) == 2:
@@ -321,6 +323,7 @@ class SpotahomeScraper(BaseScraper):
                 batch.append(ListingData(
                     source_listing_id=lid,
                     url=f"{BASE_URL}/es/madrid/for-rent:{kind}/{lid}",
+                    # Marker fallback uses the same JSON payload: numeric price or null.
                     price_eur=_safe_int(marker.get("minimumPrice")),
                     lat=_safe_float(coord[1]) if coord else None,
                     lon=_safe_float(coord[0]) if coord else None,

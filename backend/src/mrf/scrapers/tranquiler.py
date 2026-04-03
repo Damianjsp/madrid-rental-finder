@@ -141,6 +141,8 @@ def _parse_listing(item: dict) -> ListingData:
     title = " ".join(bit for bit in title_bits if bit)
 
     description = _strip_boilerplate(item.get("descripcion"))
+    # Tranquiler prices come from the JSON API field `precioAnuncio` as a numeric value
+    # (or null/empty), not from a free-form price text node, so keyword guards are not needed.
     price_eur = _safe_int(item.get("precioAnuncio"))
     deposit_months = _safe_int(item.get("nmesesFianza")) or 0
     district_raw = None
